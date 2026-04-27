@@ -19,15 +19,12 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     const limit        = Number(searchParams.get('limit')  ?? 200)
     const offset       = Number(searchParams.get('offset') ?? 0)
 
-    // Solo super_admin ve todo — los demás filtran por membresía
-    const userId = ctx.role === 'super_admin' ? null : ctx.userId
-
     if (statusList.length > 1) {
       const allResults: RowDataPacket[] = []
       for (const status of statusList) {
         const results = await callProcedure<RowDataPacket>(
-          'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
-          [ctx.tenantId, Number(projectId), status, sprintNum, search, limit, offset, userId],
+          'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?)',
+          [ctx.tenantId, Number(projectId), status, sprintNum, search, limit, offset],
         )
         allResults.push(...(results[0] ?? []))
       }
@@ -35,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     }
 
     const results = await callProcedure<RowDataPacket>(
-      'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
+      'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?)',
       [
         ctx.tenantId,
         Number(projectId),
@@ -44,7 +41,6 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
         search,
         limit,
         offset,
-        userId,
       ],
     )
 
