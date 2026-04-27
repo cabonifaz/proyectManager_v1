@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { ImportModal } from './ImportModal'
 import type { Role } from '@/lib/rbac'
 
-interface Project { id: number; code: string; name: string }
+interface Project { id: number; code: string; name: string; is_member?: number }
 interface TechCol  { id: number; col_key: string; name: string; col_type: string; sort_order: number }
 interface TechVal  { col_key: string; name: string; value: string; eta: string | null }
 interface BacklogItem {
@@ -25,7 +25,12 @@ const STATUS_COLORS: Record<string, string> = {
 export function BacklogClient({ projects, tenant, role }: {
   projects: Project[]; tenant: string; role: Role
 }) {
-  const [projectId, setProjectId]         = useState<number | null>(projects[0]?.id ?? null)
+  // FILTRO ESTRICTO: Solo Super Admin global o Gestor específico de ese proyecto
+  const allowedProjects = projects.filter(p => 
+    role === 'super_admin' || Number(p.is_member) > 0
+  )
+
+  const [projectId, setProjectId]         = useState<number | null>(allowedProjects[0]?.id ?? null)
   const [items, setItems]                 = useState<BacklogItem[]>([])
   const [techCols, setTechCols]           = useState<TechCol[]>([])
   const [loading, setLoading]             = useState(false)
@@ -140,7 +145,7 @@ export function BacklogClient({ projects, tenant, role }: {
         ) + 2,
       }))
 
-      const projectName = projects.find(p => p.id === projectId)?.name ?? 'backlog'
+      const projectName = allowedProjects.find(p => p.id === projectId)?.name ?? 'backlog'
       XLSX.writeFile(wb, `${projectName.replace(/\s+/g, '_')}_backlog.xlsx`)
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
@@ -162,7 +167,8 @@ export function BacklogClient({ projects, tenant, role }: {
           value={projectId ?? ''}
           onChange={e => setProjectId(Number(e.target.value))}
         >
-          {projects.map(p => (
+          {allowedProjects.length === 0 && <option value="">Sin proyectos permitidos</option>}
+          {allowedProjects.map(p => (
             <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
           ))}
         </select>
@@ -170,13 +176,13 @@ export function BacklogClient({ projects, tenant, role }: {
         <input
           type="text"
           placeholder="Buscar código, módulo, descripción..."
-          className="border rounded px-3 py-1.5 text-sm w-56"
+          className="border rounded px-3 py-1.5 text-sm w-56 outline-none focus:ring-1 focus:ring-blue-500"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
 
         <select
-          className="border rounded px-3 py-1.5 text-sm"
+          className="border rounded px-3 py-1.5 text-sm outline-none"
           value={statusFilter}
           onChange={e => setStatus(e.target.value)}
         >
@@ -189,7 +195,7 @@ export function BacklogClient({ projects, tenant, role }: {
         </select>
 
         <select
-          className="border rounded px-3 py-1.5 text-sm"
+          className="border rounded px-3 py-1.5 text-sm outline-none"
           value={sprintFilter}
           onChange={e => setSprint(e.target.value)}
         >
@@ -203,7 +209,7 @@ export function BacklogClient({ projects, tenant, role }: {
           {canManageCols && (
             <button
               onClick={() => setShowColConfig(true)}
-              className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50"
+              className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors"
             >
               ⚙ Columnas
             </button>
@@ -211,7 +217,7 @@ export function BacklogClient({ projects, tenant, role }: {
           <button
             onClick={handleExport}
             disabled={exporting || !projectId}
-            className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
           >
             {exporting ? 'Exportando...' : '↓ Exportar Excel'}
           </button>
@@ -219,13 +225,13 @@ export function BacklogClient({ projects, tenant, role }: {
             <>
               <button
                 onClick={() => setShowImport(true)}
-                className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50"
+                className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 ↑ Importar Excel
               </button>
               <button
                 onClick={() => { setEditItem(null); setShowForm(true) }}
-                className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700"
+                className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
               >
                 + Nuevo item
               </button>
@@ -238,7 +244,7 @@ export function BacklogClient({ projects, tenant, role }: {
       {fetchError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm flex justify-between items-center">
           <span>{fetchError}</span>
-          <button onClick={() => fetchItems()} className="underline text-xs ml-3">Reintentar</button>
+          <button onClick={() => fetchItems()} className="underline text-xs ml-3 hover:text-red-900">Reintentar</button>
         </div>
       )}
 
@@ -272,7 +278,7 @@ export function BacklogClient({ projects, tenant, role }: {
             ) : items.length === 0 ? (
               <tr>
                 <td colSpan={99} className="px-3 py-10 text-center text-gray-400">
-                  {projects.length === 0 ? 'No hay proyectos disponibles' : 'Sin resultados'}
+                  {allowedProjects.length === 0 ? 'No hay proyectos disponibles para su rol' : 'Sin resultados'}
                 </td>
               </tr>
             ) : items.map(item => (
@@ -286,25 +292,25 @@ export function BacklogClient({ projects, tenant, role }: {
                   <div className="flex items-center gap-1 w-24">
                     <div className="flex-1 bg-gray-200 rounded-full h-1.5">
                       <div
-                        className="bg-blue-500 h-1.5 rounded-full"
+                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
                         style={{ width: `${item.progress}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-500 w-8 text-right">{item.progress}%</span>
+                    <span className="text-xs text-gray-500 w-8 text-right font-medium">{item.progress}%</span>
                   </div>
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[item.status] ?? ''}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${STATUS_COLORS[item.status] ?? ''}`}>
                     {item.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap">
+                <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap font-medium">
                   {item.sprint_num ?? '—'}
                 </td>
                 <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
                   {item.eta ? item.eta.toString().slice(0, 10) : '—'}
                 </td>
-                <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
+                <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap">
                   {item.reg_date ? item.reg_date.toString().slice(0, 10) : '—'}
                 </td>
                 {techCols.map(col => {
@@ -319,7 +325,7 @@ export function BacklogClient({ projects, tenant, role }: {
                   {item.comment ? (
                     <button
                       onClick={() => setViewComment({ code: item.code, comment: item.comment })}
-                      className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs transition-colors whitespace-nowrap"
+                      className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-[10px] font-bold uppercase transition-colors whitespace-nowrap"
                     >
                       Ver nota
                     </button>
@@ -328,11 +334,11 @@ export function BacklogClient({ projects, tenant, role }: {
                   )}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
-                  <div className="flex gap-2">
+                  <div className="flex justify-end gap-3">
                     {canEdit && (
                       <button
                         onClick={() => { setEditItem(item); setShowForm(true) }}
-                        className="text-blue-600 hover:underline text-xs"
+                        className="text-blue-600 hover:text-blue-800 text-[10px] font-bold uppercase transition-colors"
                       >
                         Editar
                       </button>
@@ -340,7 +346,7 @@ export function BacklogClient({ projects, tenant, role }: {
                     {canDelete && (
                       <button
                         onClick={() => handleDelete(item.id)}
-                        className="text-red-500 hover:underline text-xs"
+                        className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase transition-colors"
                       >
                         Eliminar
                       </button>
@@ -391,25 +397,25 @@ export function BacklogClient({ projects, tenant, role }: {
       {viewComment && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-4 border-b pb-3">
               <div>
-                <p className="text-xs text-gray-400 font-mono">{viewComment.code}</p>
-                <h2 className="text-base font-semibold">Comentario</h2>
+                <p className="text-[10px] text-gray-400 font-mono font-bold uppercase tracking-widest">{viewComment.code}</p>
+                <h2 className="text-lg font-bold text-gray-800">Comentario</h2>
               </div>
               <button
                 onClick={() => setViewComment(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl"
+                className="text-gray-400 hover:text-gray-600 text-2xl"
               >
                 ×
               </button>
             </div>
-            <p className="text-sm text-gray-700 whitespace-pre-wrap bg-gray-50 rounded p-3 border leading-relaxed">
-              {viewComment.comment}
+            <p className="text-sm text-gray-700 whitespace-pre-wrap bg-yellow-50 rounded-lg p-4 border border-yellow-100 leading-relaxed italic">
+              "{viewComment.comment}"
             </p>
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-end mt-6 pt-4 border-t">
               <button
                 onClick={() => setViewComment(null)}
-                className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
+                className="px-6 py-2 text-sm border rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
                 Cerrar
               </button>
@@ -456,6 +462,7 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (saving) return
     setSaving(true)
     setError('')
 
@@ -525,54 +532,57 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">{item ? 'Editar item' : 'Nuevo item'}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        <div className="flex items-center justify-between mb-4 border-b pb-3">
+          <h2 className="text-lg font-bold text-gray-800">{item ? 'Editar Item del Backlog' : 'Nuevo Item del Backlog'}</h2>
+          <button onClick={onClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
+          <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded">
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium mb-1">Código *</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Código *</label>
               <input
                 required
-                className="w-full border rounded px-2 py-1.5 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono"
                 value={form.code}
                 onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
+                placeholder="Ej: FEAT-123"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Módulo</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Módulo</label>
               <input
-                className="w-full border rounded px-2 py-1.5 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
                 value={form.module}
                 onChange={e => setForm(f => ({ ...f, module: e.target.value }))}
+                placeholder="Ej: Autenticación"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">Descripción General *</label>
+            <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Descripción General *</label>
             <textarea
               required
               rows={3}
-              className="w-full border rounded px-2 py-1.5 text-sm"
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
               value={form.description}
               onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Describe lo que se debe hacer..."
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium mb-1">Estado</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Estado</label>
               <select
-                className="w-full border rounded px-2 py-1.5 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
                 value={form.status}
                 onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
               >
@@ -584,28 +594,32 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Avance %</label>
-              <input
-                type="number" min={0} max={100}
-                className="w-full border rounded px-2 py-1.5 text-sm"
-                value={form.progress}
-                onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))}
-              />
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Avance %</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0} max={100}
+                  className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  value={form.progress}
+                  onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))}
+                />
+                <span className="text-sm font-medium text-gray-500 w-8">%</span>
+              </div>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Sprint #</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Sprint #</label>
               <input
                 type="number"
-                className="w-full border rounded px-2 py-1.5 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
                 value={form.sprint_num}
                 onChange={e => setForm(f => ({ ...f, sprint_num: e.target.value }))}
+                placeholder="Ej: 1"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">ETA</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">ETA (Fecha estimada)</label>
               <input
                 type="date"
-                className="w-full border rounded px-2 py-1.5 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600"
                 value={form.eta}
                 onChange={e => setForm(f => ({ ...f, eta: e.target.value }))}
               />
@@ -613,17 +627,18 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           </div>
 
           {techCols.length > 0 && (
-            <div>
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                Tecnologías
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+              <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+                Tecnologías Adicionales
               </p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 {techCols.map(col => (
-                  <div key={col.col_key} className="border rounded p-3 bg-gray-50">
+                  <div key={col.col_key}>
                     <label className="block text-xs font-medium text-gray-700 mb-1">{col.name}</label>
                     <input
                       placeholder="Valor / Responsable"
-                      className="w-full border rounded px-2 py-1 text-xs bg-white"
+                      className="w-full border rounded px-3 py-1.5 text-sm bg-white outline-none focus:border-blue-500"
                       value={techVals[col.col_key] ?? ''}
                       onChange={e => setTechVals(v => ({ ...v, [col.col_key]: e.target.value }))}
                     />
@@ -634,29 +649,31 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           )}
 
           <div>
-            <label className="block text-xs font-medium mb-1">Comentario</label>
+            <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Notas / Comentarios</label>
             <textarea
               rows={2}
-              className="w-full border rounded px-2 py-1.5 text-sm"
+              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
               value={form.comment}
               onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
+              placeholder="Información extra o dependencias..."
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t">
+          <div className="flex justify-end gap-3 pt-4 border-t">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
+              disabled={saving}
+              className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-600"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors min-w-[120px]"
             >
-              {saving ? 'Guardando...' : 'Guardar'}
+              {saving ? 'Guardando...' : 'Guardar Item'}
             </button>
           </div>
         </form>
@@ -680,6 +697,7 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+    if (saving) return
     setSaving(true)
     setError('')
     try {
@@ -710,24 +728,24 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Columnas de tecnología</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+        <div className="flex items-center justify-between mb-4 border-b pb-3">
+          <h2 className="text-lg font-bold text-gray-800">Columnas de Tecnología</h2>
+          <button onClick={onClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
 
-        <div className="mb-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+        <div className="mb-6">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
             Columnas actuales ({columns.length})
           </p>
           {columns.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">Sin columnas configuradas</p>
+            <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded text-center">No hay columnas dinámicas configuradas</p>
           ) : (
-            <div className="space-y-1 max-h-40 overflow-y-auto">
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
               {columns.map(c => (
                 <div key={c.col_key}
-                  className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded text-sm">
-                  <span className="font-medium">{c.name}</span>
-                  <span className="text-xs text-gray-400 bg-white border px-1.5 py-0.5 rounded">
+                  className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
+                  <span className="font-medium text-gray-700">{c.name}</span>
+                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 uppercase rounded">
                     {c.col_type === 'both' ? 'Backlog + Sprint' : c.col_type}
                   </span>
                 </div>
@@ -736,54 +754,55 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
           )}
         </div>
 
-        <div className="border-t pt-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
-            Agregar columna
+        <div className="border-t pt-5">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">
+            Agregar nueva columna
           </p>
 
           {error && (
-            <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 rounded text-xs">
+            <div className="mb-4 p-2 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded">
               {error}
             </div>
           )}
 
-          <form onSubmit={handleAdd} className="space-y-3">
+          <form onSubmit={handleAdd} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium mb-1">Nombre *</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Nombre de la columna *</label>
               <input
                 required
-                className="w-full border rounded px-2 py-1.5 text-sm"
-                placeholder="ej: Backend .NET, QA, AWS"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="Ej: Base de Datos, AWS, QA..."
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Visible en</label>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Visible en</label>
               <select
-                className="w-full border rounded px-2 py-1.5 text-sm"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
                 value={form.colType}
                 onChange={e => setForm(f => ({ ...f, colType: e.target.value }))}
               >
                 <option value="both">Backlog y Sprint</option>
-                <option value="backlog">Solo Backlog</option>
-                <option value="sprint">Solo Sprint</option>
+                <option value="backlog">Solo en Backlog</option>
+                <option value="sprint">Solo en Sprint</option>
               </select>
             </div>
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-3 pt-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm border rounded hover:bg-gray-50"
+                disabled={saving}
+                className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 font-medium text-gray-600 transition-colors"
               >
                 Cerrar
               </button>
               <button
                 type="submit"
                 disabled={saving}
-                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors"
               >
-                {saving ? 'Agregando...' : 'Agregar'}
+                {saving ? 'Agregando...' : 'Agregar Columna'}
               </button>
             </div>
           </form>

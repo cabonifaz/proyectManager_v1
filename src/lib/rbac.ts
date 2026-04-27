@@ -1,3 +1,5 @@
+// src/lib/rbac.ts
+
 export type Role = 'super_admin' | 'gestor_proyecto' | 'lider_tecnico' | 'desarrollador'
 
 export type Permission =
@@ -28,7 +30,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'dashboard:read', 'dashboard:export',
   ],
   gestor_proyecto: [
-    'user:read',
+    'user:read', // Único permiso de usuario: solo lectura
     'project:create', 'project:read', 'project:update',
     'project:manage_members', 'project:manage_columns',
     'backlog:create', 'backlog:read', 'backlog:update', 'backlog:delete',

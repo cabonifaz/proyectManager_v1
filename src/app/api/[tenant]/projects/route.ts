@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedure, callProcedureOut } from '@/lib/db'
+import { callProcedure } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
 export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
+    // Validamos la sesión y el permiso general de lectura
     const { ctx, errorResponse } = await guardRoute(req, 'project:read')
     if (errorResponse) return errorResponse
 
     const { searchParams } = req.nextUrl
     const status = searchParams.get('status') ?? null
 
+    /**
+     * Solo enviamos 3 parámetros:
+     * 1. ID del Tenant
+     * 2. Filtro de estado (opcional)
+     * 3. ID del Usuario que consulta (para calcular su rol interno por proyecto)
+     */
     const results = await callProcedure<RowDataPacket>(
       'CALL sp_project_list(?, ?, ?)',
-      [ctx.tenantId, status],
+      [ctx.tenantId, status, ctx.userId],
     )
 
     return NextResponse.json({ data: results[0] ?? [] })
@@ -22,31 +29,30 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
   }
 }
 
+// El método POST se mantiene igual, usando ctx.userId para auditoría
 export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'project:create')
     if (errorResponse) return errorResponse
 
-    const body   = await req.json()
-    const result = await callProcedureOut(
-      'sp_project_upsert',
-      {
-        p_tenant_id:   ctx.tenantId,
-        p_project_id:  null,
-        p_manager_id:  body.managerId   ?? null,
-        p_code:        body.code,
-        p_name:        body.name,
-        p_description: body.description ?? null,
-        p_status:      body.status      ?? null,
-        p_start_date:  body.startDate   ?? null,
-        p_end_date:    body.endDate     ?? null,
-        p_user_id:     ctx.userId,
-      },
-      ['p_result_id', 'p_error'],
+    const body = await req.json()
+    const result = await callProcedure(
+      'CALL sp_project_upsert(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        ctx.tenantId,
+        null, // p_project_id null para creación
+        body.managerId ?? null,
+        body.code,
+        body.name,
+        body.description ?? null,
+        body.status ?? 'activo',
+        body.startDate ?? null,
+        body.endDate ?? null,
+        ctx.userId
+      ]
     )
 
-    if (result.p_error) return NextResponse.json({ error: result.p_error }, { status: 400 })
-    return NextResponse.json({ id: result.p_result_id }, { status: 201 })
+    return NextResponse.json({ id: result[0][0].p_result_id }, { status: 201 })
   } catch (err) {
     return handleApiError(err)
   }

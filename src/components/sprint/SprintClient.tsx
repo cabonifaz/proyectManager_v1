@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Role } from '@/lib/rbac'
 
-interface Project { id: number; code: string; name: string }
+// 1. AÑADIDO: is_member para el filtro del combo
+interface Project { id: number; code: string; name: string; is_member?: number }
 interface Member  { id: number; name: string; role: string }
 interface Sprint {
   id: number; number: number; name: string; goal: string | null
@@ -38,7 +39,12 @@ const STATUS_COLORS: Record<string, string> = {
 export function SprintClient({ projects, members, tenant, role, userId }: {
   projects: Project[]; members: Member[]; tenant: string; role: Role; userId: number
 }) {
-  const [projectId, setProjectId]           = useState<number | null>(projects[0]?.id ?? null)
+  // 2. CORRECCIÓN DEL COMBO: Filtramos solo los permitidos
+  const allowedProjects = projects.filter(p => 
+    role === 'super_admin' || Number(p.is_member) > 0
+  )
+
+  const [projectId, setProjectId]           = useState<number | null>(allowedProjects[0]?.id ?? null)
   const [sprints, setSprints]               = useState<Sprint[]>([])
   const [activeSprint, setActiveSprint]     = useState<Sprint | null>(null)
   const [items, setItems]                   = useState<SprintItem[]>([])
@@ -51,7 +57,9 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [showItemForm, setShowItemForm]     = useState(false)
   const [viewComment, setViewComment]       = useState<{ code: string; comment: string } | null>(null)
 
-  const canManageSprint = ['super_admin','gestor_proyecto'].includes(role)
+  // 3. CORRECCIÓN DE PERMISO: Verificamos contra el proyecto actual
+  const currentProject = allowedProjects.find(p => p.id === projectId)
+  const canManageSprint = role === 'super_admin' || Number(currentProject?.is_member) > 0
   const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
 
   const fetchTechCols = useCallback(async () => {
@@ -122,8 +130,15 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
   useEffect(() => { fetchItems() }, [statusFilters])
 
+  // Cálculos para la cabecera
   const completedItems = items.filter(i => i.status === 'completado').length
   const pct = items.length > 0 ? Math.round(completedItems / items.length * 100) : 0
+  
+  // Nuevos cálculos para los indicadores visuales
+  const pendingItems = items.filter(i => i.status === 'pendiente').length
+  const inProgressItems = items.filter(i => i.status === 'en_progreso').length
+  const inReviewItems = items.filter(i => i.status === 'en_revision').length
+  const blockedItems = items.filter(i => i.status === 'bloqueado').length
 
   function toggleStatus(val: string) {
     setStatusFilters(prev =>
@@ -133,16 +148,17 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
   return (
     <div className="space-y-4">
-      {/* Selector proyecto */}
+      {/* Selector proyecto corregido */}
       <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
         <select
           className="border rounded px-3 py-1.5 text-sm"
           value={projectId ?? ''}
           onChange={e => setProjectId(Number(e.target.value))}
         >
-          {projects.map(p => (
+          {allowedProjects.map(p => (
             <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
           ))}
+          {allowedProjects.length === 0 && <option disabled>Sin proyectos permitidos</option>}
         </select>
 
         {activeSprint && (
@@ -161,16 +177,16 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         )}
       </div>
 
-      {/* Header sprint activo */}
+      {/* Header sprint activo con NUEVOS INDICADORES */}
       {activeSprint ? (
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
           <div className="flex flex-wrap gap-4 items-start">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs font-medium px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
                   Activo
                 </span>
-                <h2 className="font-semibold">
+                <h2 className="font-semibold text-lg">
                   Sprint #{activeSprint.number} — {activeSprint.name}
                 </h2>
               </div>
@@ -192,12 +208,35 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                   </span>
                 )}
               </div>
+
+              {/* AÑADIDO: Resumen rápido de estados para el Gestor */}
+              <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-gray-300"></span>
+                  <span className="text-gray-600">Pendientes: <strong>{pendingItems}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                  <span className="text-blue-700">En progreso: <strong>{inProgressItems}</strong></span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
+                  <span className="text-yellow-700">En revisión: <strong>{inReviewItems}</strong></span>
+                </div>
+                {blockedItems > 0 && (
+                  <div className="flex items-center gap-1.5 bg-red-50 text-red-700 px-2 py-0.5 rounded font-medium border border-red-100">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                    Bloqueados: <strong>{blockedItems}</strong>
+                  </div>
+                )}
+              </div>
+
             </div>
             <div className="text-right min-w-32">
-              <p className="text-3xl font-bold text-blue-600">{pct}%</p>
-              <p className="text-xs text-gray-400 mt-0.5">{completedItems}/{items.length} completados</p>
+              <p className="text-4xl font-bold text-blue-600">{pct}%</p>
+              <p className="text-xs text-gray-400 mt-1">{completedItems}/{items.length} completados</p>
               <div className="w-32 bg-gray-200 rounded-full h-2 mt-2 ml-auto">
-                <div className="bg-blue-500 h-2 rounded-full transition-all"
+                <div className="bg-blue-500 h-2 rounded-full transition-all duration-500"
                   style={{ width: `${pct}%` }} />
               </div>
             </div>

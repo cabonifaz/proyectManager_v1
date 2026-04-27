@@ -50,12 +50,15 @@ export function ProjectsClient({ tenant, role, userId }: {
   const [viewMode, setViewMode]     = useState<'grid' | 'list'>('grid')
 
   const isSuperAdmin = role === 'super_admin'
+  const isGestor     = role === 'gestor_proyecto'
   const canCreate    = isSuperAdmin
   const canDelete    = isSuperAdmin
 
+  // Lógica corregida: Solo super_admin o gestor_proyecto que sea miembro (is_member === 1)
   function canEditProject(p: Project): boolean {
     if (isSuperAdmin) return true
-    return p.is_member === 1
+    if (isGestor && p.is_member === 1) return true
+    return false
   }
 
   const fetchProjects = useCallback(async () => {
@@ -232,17 +235,18 @@ export function ProjectsClient({ tenant, role, userId }: {
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-2">
+                      {/* Botones restringidos en modo lista */}
                       {canEditProject(p) && (
-                        <a href={`/${tenant}/backlog?projectId=${p.id}`}
-                          className="text-xs text-blue-600 hover:underline">Backlog</a>
-                      )}
-                      {canEditProject(p) && (
-                        <button
-                          onClick={() => { setEditItem(p); setShowForm(true) }}
-                          className="text-xs text-gray-600 hover:underline"
-                        >
-                          Editar
-                        </button>
+                        <>
+                          <a href={`/${tenant}/backlog?projectId=${p.id}`}
+                            className="text-xs text-blue-600 hover:underline">Backlog</a>
+                          <button
+                            onClick={() => { setEditItem(p); setShowForm(true) }}
+                            className="text-xs text-gray-600 hover:underline"
+                          >
+                            Editar
+                          </button>
+                        </>
                       )}
                       {canDelete && (
                         <button
@@ -272,8 +276,6 @@ export function ProjectsClient({ tenant, role, userId }: {
     </div>
   )
 }
-
-// ─── Card ─────────────────────────────────────────────────────────────────────
 
 function ProjectCard({ project: p, tenant, canEdit, canDelete, onEdit, onDelete }: {
   project: Project
@@ -324,12 +326,13 @@ function ProjectCard({ project: p, tenant, canEdit, canDelete, onEdit, onDelete 
       </div>
 
       <div className="flex gap-3 pt-1 border-t">
+        {/* Botones restringidos en modo card */}
         {canEdit && (
-          <a href={`/${tenant}/backlog?projectId=${p.id}`}
-            className="text-xs text-blue-600 hover:underline">Ver backlog</a>
-        )}
-        {canEdit && (
-          <button onClick={onEdit} className="text-xs text-gray-600 hover:underline">Editar</button>
+          <>
+            <a href={`/${tenant}/backlog?projectId=${p.id}`}
+              className="text-xs text-blue-600 hover:underline">Ver backlog</a>
+            <button onClick={onEdit} className="text-xs text-gray-600 hover:underline">Editar</button>
+          </>
         )}
         {canDelete && (
           <button onClick={onDelete} className="text-xs text-red-500 hover:underline ml-auto">Eliminar</button>
@@ -338,8 +341,6 @@ function ProjectCard({ project: p, tenant, canEdit, canDelete, onEdit, onDelete 
     </div>
   )
 }
-
-// ─── Form modal ───────────────────────────────────────────────────────────────
 
 function ProjectForm({ tenant, item, onClose, onSaved }: {
   tenant: string
@@ -451,9 +452,6 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                 {autoCode ? '✎ Personalizar' : '↺ Auto'}
               </button>
             </div>
-            {autoCode && (
-              <p className="text-xs text-gray-400 mt-1">Generado automáticamente desde el nombre</p>
-            )}
           </div>
 
           <div>

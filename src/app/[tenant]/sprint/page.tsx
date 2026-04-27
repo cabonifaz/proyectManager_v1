@@ -6,11 +6,16 @@ import { callProcedure, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
 interface Project extends RowDataPacket {
-  id: number; code: string; name: string
+  id: number; 
+  code: string; 
+  name: string;
+  is_member: number;
 }
 
 interface Member extends RowDataPacket {
-  id: number; name: string; role: string
+  id: number; 
+  name: string; 
+  role: string;
 }
 
 export default async function SprintPage({ params }: { params: { tenant: string } }) {
@@ -18,36 +23,19 @@ export default async function SprintPage({ params }: { params: { tenant: string 
   if (!session) redirect('/login')
 
   const { user } = session
-  const isSuperAdmin = user.role === 'super_admin'
 
-  // Super admin ve todos los proyectos
-  // PM y DEV solo ven sus proyectos asignados
-  let projects: Project[] = []
+  // Llamamos al SP para obtener proyectos filtrados por pertenencia
+  const projectsResult = await callProcedure<Project>(
+    'CALL sp_project_list(?, ?, ?)',
+    [
+      user.tenantId, 
+      'activo', 
+      user.id
+    ]
+  )
+  const projects = projectsResult[0] || []
 
-  if (isSuperAdmin) {
-    projects = await query<Project>(
-      `SELECT p.id, p.code, p.name
-       FROM projects p
-       INNER JOIN tenants t ON t.id = p.tenant_id
-       WHERE t.slug = ? AND p.deleted_at IS NULL AND p.status != 'archivado'
-       ORDER BY p.name`,
-      [params.tenant],
-    )
-  } else {
-    projects = await query<Project>(
-      `SELECT p.id, p.code, p.name
-       FROM projects p
-       INNER JOIN tenants t ON t.id = p.tenant_id
-       INNER JOIN project_members pm ON pm.project_id = p.id
-                                    AND pm.user_id = ?
-                                    AND pm.deleted_at IS NULL
-       WHERE t.slug = ? AND p.deleted_at IS NULL AND p.status != 'archivado'
-       ORDER BY p.name`,
-      [user.id, params.tenant],
-    )
-  }
-
-  // Miembros del tenant para asignación de talentos
+  // Miembros del tenant para los formularios
   const members = await query<Member>(
     `SELECT u.id, u.name, u.role
      FROM users u
@@ -58,13 +46,13 @@ export default async function SprintPage({ params }: { params: { tenant: string 
   )
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-6">Sprint</h1>
+    <div className="p-6">
+      <h1 className="text-2xl font-semibold mb-6">Sprints</h1>
       <SprintClient
         projects={projects}
         members={members}
         tenant={params.tenant}
-        role={user.role}
+        role={user.role as any}
         userId={user.id}
       />
     </div>
