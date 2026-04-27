@@ -9,7 +9,7 @@ interface TechCol  { id: number; col_key: string; name: string; col_type: string
 interface TechVal  { col_key: string; name: string; value: string; eta: string | null }
 interface BacklogItem {
   id: number; code: string; module: string; description: string
-  progress: number; status: string; sprint_num: number | null
+  progress: number; status: string; sprint_num: number | string | null
   eta: string | null; reg_date: string; comment: string
   tech_columns: TechVal[]
 }
@@ -25,7 +25,6 @@ const STATUS_COLORS: Record<string, string> = {
 export function BacklogClient({ projects, tenant, role }: {
   projects: Project[]; tenant: string; role: Role
 }) {
-  // FILTRO ESTRICTO: Solo Super Admin global o Gestor específico de ese proyecto
   const allowedProjects = projects.filter(p => 
     role === 'super_admin' || Number(p.is_member) > 0
   )
@@ -154,9 +153,30 @@ export function BacklogClient({ projects, tenant, role }: {
     }
   }
 
+  // ─── LÓGICA CORREGIDA PARA EL KPI DE CARGA DE DESARROLLADORES ──────────────
+  // Forzamos a que todos los sprints sean números reales
   const sprints = Array.from(
-    new Set(items.map(i => i.sprint_num).filter(Boolean))
-  ).sort() as number[]
+    new Set(items.map(i => Number(i.sprint_num)).filter(n => !isNaN(n) && n > 0))
+  ).sort((a, b) => a - b)
+
+  const targetSprintNum = sprintFilter ? Number(sprintFilter) : (sprints.length > 0 ? Math.max(...sprints) : null)
+  
+  const devLoad: Record<string, number> = {}
+  if (targetSprintNum !== null) {
+    items
+      // Convertimos a número de forma segura para comparar
+      .filter(i => Number(i.sprint_num) === targetSprintNum && i.status !== 'completado' && i.status !== 'cancelado')
+      .forEach(item => {
+        item.tech_columns?.forEach(tc => {
+          const devName = tc.value?.trim()
+          if (devName && devName !== '-' && devName.toLowerCase() !== 'n/a' && devName.toLowerCase() !== 'na') {
+            devLoad[devName] = (devLoad[devName] || 0) + 1
+          }
+        })
+      })
+  }
+  const devLoadEntries = Object.entries(devLoad).sort((a, b) => b[1] - a[1])
+  // ────────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
@@ -239,6 +259,32 @@ export function BacklogClient({ projects, tenant, role }: {
           )}
         </div>
       </div>
+
+      {/* KPI DE CARGA DE DESARROLLADORES AHORA SIEMPRE VISIBLE */}
+      {targetSprintNum !== null && (
+        <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-4 items-center border-l-4 border-blue-500">
+          <div className="border-r border-gray-100 pr-4">
+            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">
+              Carga Sprint {targetSprintNum}
+            </p>
+            <p className="text-[10px] text-gray-400">Tareas activas</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {devLoadEntries.length > 0 ? (
+              devLoadEntries.map(([dev, count]) => (
+                <div key={dev} className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-2 py-1 rounded-md shadow-sm">
+                  <span className="font-medium text-xs text-gray-700">{dev}</span>
+                  <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                    {count}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <span className="text-xs text-gray-400 italic">No hay tareas pendientes asignadas en este sprint.</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {fetchError && (
