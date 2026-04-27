@@ -2,11 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
-export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
+export async function GET(req: NextRequest) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'backlog:read')
     if (errorResponse) return errorResponse
+
+    // 1. Verificamos la sesión para saber si es Super Admin
+    const session = await getServerSession(authOptions)
+    const isSuperAdmin = session?.user?.role === 'super_admin'
+    
+    // 2. Aplicamos la regla de tu SP: si es super admin, pasamos null. Si no, pasamos su ID.
+    const pUserId = isSuperAdmin ? null : ctx.userId
 
     const { searchParams } = req.nextUrl
     const projectId = searchParams.get('projectId')
@@ -19,20 +28,22 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     const limit        = Number(searchParams.get('limit')  ?? 200)
     const offset       = Number(searchParams.get('offset') ?? 0)
 
+    // Bloque para múltiples estados
     if (statusList.length > 1) {
       const allResults: RowDataPacket[] = []
       for (const status of statusList) {
         const results = await callProcedure<RowDataPacket>(
-          'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?)',
-          [ctx.tenantId, Number(projectId), status, sprintNum, search, limit, offset],
+          'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
+          [ctx.tenantId, Number(projectId), status, sprintNum, search, limit, offset, pUserId],
         )
         allResults.push(...(results[0] ?? []))
       }
       return NextResponse.json({ data: allResults })
     }
 
+    // Bloque para un solo estado o ninguno
     const results = await callProcedure<RowDataPacket>(
-      'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?)',
+      'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
       [
         ctx.tenantId,
         Number(projectId),
@@ -41,6 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
         search,
         limit,
         offset,
+        pUserId, // Aquí pasamos null o el ID, dependiendo de su rol
       ],
     )
 
@@ -50,7 +62,7 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
+export async function POST(req: NextRequest) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'backlog:create')
     if (errorResponse) return errorResponse
@@ -74,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         p_sprint_num:  body.sprintNum   ?? null,
         p_eta:         body.eta         ?? null,
         p_comment:     body.comment     ?? null,
-        p_created_by:  ctx.userId,
+        p_created_by:  ctx.userId, // Aquí sí dejamos siempre el userId porque necesitamos auditar quién lo creó
       },
       ['p_new_id', 'p_error'],
     )
