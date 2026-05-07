@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:TENANT_CRYPTO_KEY=\"6721c3ce42114c9939292d1a2aef51b74817ee562e2eba9f9b751402a7d8a54e\"; node -e \"const {createCipheriv}=require\\('crypto'\\);const k=Buffer.from\\(process.env.TENANT_CRYPTO_KEY,'hex'\\);const c=createCipheriv\\('aes-256-ecb',k,null\\);console.log\\(Buffer.concat\\([c.update\\('geeky-tech','utf8'\\),c.final\\(\\)]\\).toString\\('base64url'\\)\\);\")"
+    ]
+  }
+}

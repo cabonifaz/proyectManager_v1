@@ -8,18 +8,19 @@ const NAV = [
   { label: 'Proyectos',  href: 'projects',  roles: ['super_admin','gestor_proyecto','lider_tecnico','desarrollador'] },
   { label: 'Backlog',    href: 'backlog',   roles: ['super_admin','gestor_proyecto','lider_tecnico','desarrollador'] },
   { label: 'Sprint',     href: 'sprint',    roles: ['super_admin','gestor_proyecto','lider_tecnico','desarrollador'] },
+  { label: 'Observaciones', href: 'observaciones', roles: ['super_admin','gestor_proyecto','lider_tecnico','desarrollador'] },
   { label: 'Dashboard',  href: 'dashboard', roles: ['super_admin','gestor_proyecto','lider_tecnico'] },
   { label: 'Usuarios',   href: 'users',     roles: ['super_admin','gestor_proyecto'] },
 ]
 
-export function Sidebar({ tenant, role, userName }: { tenant: string; role: Role; userName: string }) {
+export function Sidebar({ tenant, tenantName, role, userName }: { tenant: string; tenantName: string; role: Role; userName: string }) {
   const pathname = usePathname()
 
   return (
     <aside className="w-56 bg-gray-900 text-gray-100 flex flex-col">
       <div className="px-4 py-5 border-b border-gray-700">
         <p className="text-xs text-gray-400 uppercase tracking-wider">Project Manager</p>
-        <p className="font-semibold truncate mt-1">{tenant}</p>
+        <p className="font-semibold truncate mt-1">{tenantName}</p>
       </div>
 
       <nav className="flex-1 px-2 py-4 space-y-1">

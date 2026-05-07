@@ -4,11 +4,13 @@ import bcrypt from 'bcryptjs'
 import { query } from '@/lib/db'
 import { Role } from '@/lib/rbac'
 import { RowDataPacket } from 'mysql2/promise'
+import { encryptSlug } from '@/lib/tenant-crypto'
 
 export interface AppUser {
   id: number
   tenantId: number
   tenantSlug: string
+  encryptedSlug: string
   name: string
   email: string
   role: Role
@@ -78,13 +80,14 @@ export const authOptions: NextAuthOptions = {
         ).catch(() => {})
 
         return {
-          id:         String(user.id),
-          tenantId:   user.tenant_id,
-          tenantSlug: user.tenant_slug,
-          name:       user.name,
-          email:      user.email,
-          role:       user.role,
-          avatarUrl:  user.avatar_url,
+          id:            String(user.id),
+          tenantId:      user.tenant_id,
+          tenantSlug:    user.tenant_slug,
+          encryptedSlug: encryptSlug(user.tenant_slug),
+          name:          user.name,
+          email:         user.email,
+          role:          user.role,
+          avatarUrl:     user.avatar_url,
         }
       },
     }),

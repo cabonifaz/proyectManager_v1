@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "tenant:url": "node scripts/tenant-url.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

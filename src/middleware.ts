@@ -19,14 +19,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  const { role, tenantSlug, tenantId } = token.user
+  const { role, tenantSlug, tenantId, encryptedSlug } = token.user
 
   if (isSuperAdminRoute(pathname) && role !== 'super_admin') {
     return forbidden(req)
   }
 
   const tenantFromPath = extractTenantSlug(pathname)
-  if (tenantFromPath && tenantFromPath !== tenantSlug && role !== 'super_admin') {
+  if (tenantFromPath && tenantFromPath !== encryptedSlug && role !== 'super_admin') {
     return forbidden(req)
   }
 

@@ -15,7 +15,7 @@ export default async function TenantLayout({ children, params }: Props) {
     redirect('/login')
   }
 
-  if (session.user.tenantSlug !== params.tenant && session.user.role !== 'super_admin') {
+  if (session.user.encryptedSlug !== params.tenant && session.user.role !== 'super_admin') {
     redirect('/login')
   }
 
@@ -23,6 +23,7 @@ export default async function TenantLayout({ children, params }: Props) {
     <div className="flex h-screen bg-gray-100">
       <Sidebar
         tenant={params.tenant}
+        tenantName={session.user.tenantSlug}
         role={session.user.role}
         userName={session.user.name}
       />

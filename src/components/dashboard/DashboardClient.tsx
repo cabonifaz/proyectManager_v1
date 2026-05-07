@@ -36,12 +36,39 @@ interface UpcomingItem {
   eta: string; days_until: number
 }
 
+interface ObsStats {
+  abierta:        number
+  en_seguimiento: number
+  resuelta:       number
+  cerrada:        number
+  vencidas:       number
+  por_vencer:     number
+  a_tiempo:       number
+}
+
+interface ObsOverdueDev { developer_name: string; total: number }
+
+interface DevStat {
+  developer_name:   string
+  total:            number
+  completado:       number
+  en_progreso:      number
+  en_revision:      number
+  pendiente:        number
+  bloqueado:        number
+  vencidas:     number
+  avg_progress: number
+}
+
 interface DashboardData {
-  projects:      ProjectKPI[]
-  sprints:       SprintKPI[]
-  statusDist:    StatusDist[]
-  overdueItems:  OverdueItem[]
-  upcomingItems: UpcomingItem[]
+  projects:       ProjectKPI[]
+  sprints:        SprintKPI[]
+  statusDist:     StatusDist[]
+  overdueItems:   OverdueItem[]
+  upcomingItems:  UpcomingItem[]
+  obsStats:       ObsStats | null
+  obsOverdueDevs: ObsOverdueDev[]
+  devStats:       DevStat[]
 }
 
 const STATUS_COLORS_MAP: Record<string, string> = {
@@ -323,6 +350,16 @@ export function DashboardClient({ projects, tenant, role: _role }: {
             </div>
           )}
 
+          {/* ── Observaciones ── */}
+          {data.obsStats && (
+            <ObsStatsPanel stats={data.obsStats} overdueDevs={data.obsOverdueDevs} />
+          )}
+
+          {/* ── Estadísticas por desarrollador ── */}
+          {data.devStats.length > 0 && (
+            <DevStatsPanel devStats={data.devStats} />
+          )}
+
           {/* ── Próximos a vencer + ETA vencida ── */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {/* Próximos a vencer */}
@@ -584,6 +621,194 @@ function ActiveSprintDevLoad({ tenant, projectId, sprintNum }: { tenant: string,
             </span>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── OBSERVACIONES ────────────────────────────────────────────────────────────
+function ObsStatsPanel({ stats, overdueDevs }: { stats: ObsStats; overdueDevs: ObsOverdueDev[] }) {
+  const total   = stats.abierta + stats.en_seguimiento + stats.resuelta + stats.cerrada
+  if (total === 0) return null
+  const activas = stats.abierta + stats.en_seguimiento
+
+  const estados = [
+    { label: 'Abiertas',       value: stats.abierta,        color: '#6b7280', bg: 'bg-gray-50',  text: 'text-gray-700'  },
+    { label: 'En seguimiento', value: stats.en_seguimiento, color: '#3b82f6', bg: 'bg-blue-50',  text: 'text-blue-700'  },
+    { label: 'Resueltas',      value: stats.resuelta,       color: '#22c55e', bg: 'bg-green-50', text: 'text-green-700' },
+    { label: 'Cerradas',       value: stats.cerrada,        color: '#d1d5db', bg: 'bg-gray-100', text: 'text-gray-500'  },
+  ]
+  const eta = [
+    { label: 'Vencidas',   value: stats.vencidas,   color: '#ef4444', text: 'text-red-700',    dot: 'bg-red-500'    },
+    { label: 'Por vencer', value: stats.por_vencer, color: '#f97316', text: 'text-orange-700', dot: 'bg-orange-400' },
+    { label: 'A tiempo',   value: stats.a_tiempo,   color: '#22c55e', text: 'text-green-700',  dot: 'bg-green-500'  },
+  ]
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold text-gray-700">Observaciones</h2>
+        <span className="text-xs text-gray-400">{total} total · {activas} activas</span>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Por estado */}
+        <div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Por estado</p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {estados.map(e => (
+              <div key={e.label} className={`${e.bg} rounded-lg p-3 text-center`}>
+                <p className={`text-2xl font-black ${e.text}`}>{e.value}</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">{e.label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex rounded-full overflow-hidden h-2.5">
+            {estados.map(e => {
+              const pct = total > 0 ? Math.round(e.value / total * 100) : 0
+              if (pct === 0) return null
+              return <div key={e.label} className="h-2.5 transition-all" title={`${e.label}: ${e.value} (${pct}%)`}
+                style={{ width: `${pct}%`, backgroundColor: e.color }} />
+            })}
+          </div>
+        </div>
+
+        {/* ETA activas */}
+        <div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">ETA (activas)</p>
+          <div className="space-y-2.5">
+            {eta.map(e => {
+              const pct = activas > 0 ? Math.round(e.value / activas * 100) : 0
+              return (
+                <div key={e.label}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${e.dot}`} />
+                      <span className="text-gray-600">{e.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-black ${e.text}`}>{e.value}</span>
+                      <span className="text-gray-400 w-8 text-right">{pct}%</span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: e.color }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {activas === 0 && <p className="text-xs text-gray-400 italic mt-2">Sin observaciones activas</p>}
+        </div>
+
+        {/* Devs en observaciones vencidas */}
+        <div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
+            Responsables con obs. vencidas
+          </p>
+          {overdueDevs.length === 0 ? (
+            <p className="text-xs text-gray-400 italic">Sin responsables en obs. vencidas</p>
+          ) : (
+            <div className="space-y-2">
+              {overdueDevs.map(d => (
+                <div key={d.developer_name} className="flex items-center justify-between px-3 py-2 bg-red-50 rounded-lg border border-red-100">
+                  <span className="text-sm font-medium text-gray-700">{d.developer_name}</span>
+                  <span className="text-xs font-black text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
+                    {d.total} obs.
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── ESTADÍSTICAS POR DESARROLLADOR ──────────────────────────────────────────
+function DevStatsPanel({ devStats }: { devStats: DevStat[] }) {
+  const maxTotal = Math.max(...devStats.map(d => d.total), 1)
+
+  return (
+    <div className="bg-white rounded-lg shadow p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold text-gray-700">Estadísticas por desarrollador</h2>
+        <span className="text-xs text-gray-400">{devStats.length} desarrolladores</span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50 border-b">
+            <tr className="text-[10px] font-black uppercase text-gray-400 tracking-wider">
+              <th className="px-3 py-3 text-left">Desarrollador</th>
+              <th className="px-3 py-3 text-center">Carga</th>
+              <th className="px-3 py-3 text-center text-green-600">Completado</th>
+              <th className="px-3 py-3 text-center text-blue-600">En progreso</th>
+              <th className="px-3 py-3 text-center text-yellow-600">Revisión</th>
+              <th className="px-3 py-3 text-center text-gray-500">Pendiente</th>
+              <th className="px-3 py-3 text-center text-red-600">Bloqueado</th>
+              <th className="px-3 py-3 text-center text-orange-600">ETA vencida</th>
+              <th className="px-3 py-3 text-center">Avance prom.</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {devStats.map(d => {
+              const completionPct = d.total > 0 ? Math.round(d.completado / d.total * 100) : 0
+              const cargaPct      = Math.round(d.total / maxTotal * 100)
+              return (
+                <tr key={d.developer_name} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center shrink-0">
+                        {d.developer_name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <span className="font-medium text-gray-800">{d.developer_name}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2 min-w-[80px]">
+                      <div className="flex-1 bg-gray-100 rounded-full h-2">
+                        <div className="bg-indigo-500 h-2 rounded-full transition-all"
+                          style={{ width: `${cargaPct}%` }} />
+                      </div>
+                      <span className="text-xs font-black text-gray-700 w-5 text-right">{d.total}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="font-black text-green-700">{d.completado}</span>
+                      {completionPct > 0 && (
+                        <span className="text-[9px] text-gray-400">{completionPct}%</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-center font-bold text-blue-700">{d.en_progreso || '—'}</td>
+                  <td className="px-3 py-3 text-center font-bold text-yellow-700">{d.en_revision || '—'}</td>
+                  <td className="px-3 py-3 text-center font-bold text-gray-500">{d.pendiente || '—'}</td>
+                  <td className="px-3 py-3 text-center">
+                    {d.bloqueado > 0
+                      ? <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-black">{d.bloqueado}</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    {d.vencidas > 0
+                      ? <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-black">{d.vencidas}</span>
+                      : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <div className="w-14 bg-gray-200 rounded-full h-1.5">
+                        <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${d.avg_progress}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-500">{d.avg_progress}%</span>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )

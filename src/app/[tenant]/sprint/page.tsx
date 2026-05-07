@@ -37,12 +37,11 @@ export default async function SprintPage({ params }: { params: { tenant: string 
 
   // Miembros del tenant para los formularios
   const members = await query<Member>(
-    `SELECT u.id, u.name, u.role
-     FROM users u
-     INNER JOIN tenants t ON t.id = u.tenant_id
-     WHERE t.slug = ? AND u.deleted_at IS NULL AND u.active = 1
-     ORDER BY u.name`,
-    [params.tenant],
+    `SELECT id, name, role
+     FROM users
+     WHERE tenant_id = ? AND deleted_at IS NULL AND active = 1
+     ORDER BY name`,
+    [user.tenantId],
   )
 
   return (

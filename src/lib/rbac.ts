@@ -14,6 +14,7 @@ export type Permission =
   | 'sprint_item:create' | 'sprint_item:read' | 'sprint_item:update' | 'sprint_item:delete'
   | 'sprint_item:update_own'
   | 'dashboard:read' | 'dashboard:export'
+  | 'observacion:create' | 'observacion:read' | 'observacion:update' | 'observacion:delete'
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   super_admin: [
@@ -28,6 +29,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sprint_item:create', 'sprint_item:read', 'sprint_item:update', 'sprint_item:delete',
     'sprint_item:update_own',
     'dashboard:read', 'dashboard:export',
+    'observacion:create', 'observacion:read', 'observacion:update', 'observacion:delete',
   ],
   gestor_proyecto: [
     'user:read', // Único permiso de usuario: solo lectura
@@ -39,6 +41,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sprint:manage', 'sprint:assign_talent',
     'sprint_item:create', 'sprint_item:read', 'sprint_item:update', 'sprint_item:delete',
     'dashboard:read', 'dashboard:export',
+    'observacion:create', 'observacion:read', 'observacion:update', 'observacion:delete',
   ],
   lider_tecnico: [
     'user:read',
@@ -49,6 +52,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sprint_item:create', 'sprint_item:read', 'sprint_item:update',
     'sprint_item:update_own',
     'dashboard:read',
+    'observacion:create', 'observacion:read', 'observacion:update',
   ],
   desarrollador: [
     'project:read',
@@ -57,6 +61,7 @@ const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'sprint_item:read',
     'sprint_item:update_own',
     'dashboard:read',
+    'observacion:read',
   ],
 }
 

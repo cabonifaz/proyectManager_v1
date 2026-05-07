@@ -16,12 +16,11 @@ export default async function UsersPage({ params }: { params: { tenant: string }
   }
 
   const projects = await query<Project>(
-    `SELECT p.id, p.code, p.name
-     FROM projects p
-     INNER JOIN tenants t ON t.id = p.tenant_id
-     WHERE t.slug = ? AND p.deleted_at IS NULL AND p.status != 'archivado'
-     ORDER BY p.name`,
-    [params.tenant],
+    `SELECT id, code, name
+     FROM projects
+     WHERE tenant_id = ? AND deleted_at IS NULL AND status != 'archivado'
+     ORDER BY name`,
+    [session.user.tenantId],
   )
 
   return (
