@@ -281,16 +281,18 @@ function UserForm({ tenant, user, onClose, onSaved }: {
     try {
       const url    = user ? `/api/${tenant}/users/${user.id}` : `/api/${tenant}/users`
       const method = user ? 'PATCH' : 'POST'
-      const res = await fetch(url, {
+      const res  = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
-      const json = await res.json()
+      const text = await res.text()
+      let json: any = {}
+      try { json = JSON.parse(text) } catch {}
       if (res.ok) onSaved()
-      else setError(json.error || 'Error al guardar')
+      else setError(json.error || `Error ${res.status}: ${text.slice(0, 300)}`)
     } catch (e) {
-      setError('Error de conexión o servidor')
+      setError(`Error de red: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setSaving(false)
     }
