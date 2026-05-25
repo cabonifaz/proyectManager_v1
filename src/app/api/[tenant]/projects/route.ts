@@ -29,18 +29,20 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
   }
 }
 
-// El método POST se mantiene igual, usando ctx.userId para auditoría
+
 export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'project:create')
     if (errorResponse) return errorResponse
 
     const body = await req.json()
+    
+    // Corrección: 10 parámetros de entrada (?) y 2 parámetros de salida (@)
     const result = await callProcedure(
-      'CALL sp_project_upsert(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'CALL sp_project_upsert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, @p_result_id, @p_error)',
       [
         ctx.tenantId,
-        null, // p_project_id null para creación
+        null, 
         body.managerId ?? null,
         body.code,
         body.name,
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         body.status ?? 'activo',
         body.startDate ?? null,
         body.endDate ?? null,
-        ctx.userId
+        ctx.userId 
       ]
     )
 
