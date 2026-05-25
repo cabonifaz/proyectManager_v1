@@ -88,23 +88,42 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
           // Inicializar columnas tech
           techCols.forEach(c => { mapped[c.col_key] = '' })
 
-          Object.entries(r).forEach(([key, val]) => {
-            const k      = key.toLowerCase().trim()
-            const strVal = val !== null && val !== undefined ? String(val).trim() : ''
+         Object.entries(r).forEach(([key, val]) => {
+  const k = key.toLowerCase().trim()
+  
+  // 1. Procesar valor base (fechas o texto)
+  let strVal = '';
+  if (val instanceof Date) {
+    strVal = val.toISOString().split('T')[0];
+  } else {
+    strVal = val !== null && val !== undefined ? String(val).trim() : '';
+  }
 
-            const mappedKey = BASE_HEADERS[k]
-            if (mappedKey) {
-              mapped[mappedKey] = strVal
-            } else {
-              // Intentar mapear a columna tech
-              const techCol = techCols.find(c =>
-                c.name.toLowerCase() === k ||
-                c.col_key.toLowerCase() === k ||
-                c.col_key.toLowerCase() === k.replace(/[\s.]+/g, '_')
-              )
-              if (techCol) mapped[techCol.col_key] = strVal
-            }
-          })
+  const mappedKey = BASE_HEADERS[k]
+
+  // 2. Lógica de mapeo y corrección de porcentaje
+  if (mappedKey === 'avance') {
+    // Intentamos convertir a número eliminando el % si existe
+    let num = parseFloat(strVal.replace('%', ''));
+    if (!isNaN(num)) {
+      // Si el número es 1 o menor (ej: 0.5, 1.0), lo multiplicamos por 100
+      if (num <= 1) num = num * 100;
+      mapped['avance'] = Math.round(num).toString();
+    } else {
+      mapped['avance'] = '0';
+    }
+  } else if (mappedKey) {
+    mapped[mappedKey] = strVal
+  } else {
+    // Intentar mapear a columna tech
+    const techCol = techCols.find(c =>
+      c.name.toLowerCase() === k ||
+      c.col_key.toLowerCase() === k ||
+      c.col_key.toLowerCase() === k.replace(/[\s.]+/g, '_')
+    )
+    if (techCol) mapped[techCol.col_key] = strVal
+  }
+})
 
           return mapped
         })
@@ -122,10 +141,17 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
     setImporting(true)
     setError('')
     try {
+      // CAMBIO AQUÍ: Formatear las filas para que el backend reconozca la fecha de registro
+      const formattedRows = rows.map(r => ({
+        ...r,
+        reg_date: r.fech_reg, // Enviamos reg_date para que la BD lo atrape
+        regDate: r.fech_reg   // Enviamos regDate por si la API usa camelCase
+      }))
+
       const res = await fetch(`/api/${tenant}/backlog/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, rows }),
+        body: JSON.stringify({ projectId, rows: formattedRows }), // Enviamos las filas formateadas
       })
       const json = await res.json()
       if (!res.ok) { setError(`Error ${res.status}: ${json.error}`); setImporting(false); return }

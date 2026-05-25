@@ -62,7 +62,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       return NextResponse.json({ error: 'projectId y rows son requeridos' }, { status: 400 })
     }
 
-    // Columnas tech del proyecto
     const techCols = await query<ColRow>(
       `SELECT id, name, col_key
        FROM project_columns
@@ -71,7 +70,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       [projectId],
     )
 
-    // Items existentes del proyecto para detectar duplicados
     const existingItems = await query<ExistingItem>(
       `SELECT id, code FROM backlog_items
        WHERE project_id = ? AND deleted_at IS NULL`,
@@ -103,7 +101,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       let itemId: number
 
       if (existingId) {
-        // ── UPDATE ────────────────────────────────────────────────────────────
         const upd = await callProcedureOut(
           'sp_backlog_update',
           {
@@ -126,12 +123,9 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           errors.push(`Fila ${rowNum} (${row.codigo}): ${upd.p_error}`)
           continue
         }
-
         itemId = existingId
         updated.push(itemId)
-
       } else {
-        // ── INSERT ────────────────────────────────────────────────────────────
         const result = await callProcedureOut(
           'sp_backlog_create',
           {
@@ -153,10 +147,8 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           errors.push(`Fila ${rowNum} (${row.codigo}): ${result.p_error}`)
           continue
         }
-
         itemId = result.p_new_id as number
 
-        // Actualizar avance si viene en el Excel
         if (avance !== null && !isNaN(avance) && avance > 0) {
           await callProcedureOut(
             'sp_backlog_update',
@@ -176,8 +168,25 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
             ['p_error'],
           )
         }
-
         created.push(itemId)
+      }
+
+      // ── ACTUALIZACIÓN FORZADA DE FECHAS (REG_DATE Y CREATED_AT) ───────────
+      const fechaRegistro = row.fech_reg || row.reg_date || row.regDate || row['fech reg'] || row['FECH REG'];
+      
+      if (fechaRegistro && String(fechaRegistro).trim() !== '') {
+        const dateStr = String(fechaRegistro).trim().substring(0, 10);
+        try {
+          // Actualizamos AMBAS columnas a la vez con la fecha del Excel
+          await query(
+            'UPDATE backlog_items SET reg_date = ?, created_at = ? WHERE id = ?', 
+            [dateStr, `${dateStr} 12:00:00`, itemId]
+          );
+        } catch (err: any) {
+          errors.push(`Fila ${rowNum} (${row.codigo}): Fallo al forzar fecha: ${err.message}`);
+        }
+      } else {
+        errors.push(`Fila ${rowNum} (${row.codigo}): No se encontró fecha en el Excel, se usará la de hoy.`);
       }
 
       // ── Columnas tech ─────────────────────────────────────────────────────
