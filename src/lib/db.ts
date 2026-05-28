@@ -1,6 +1,11 @@
 import mysql, { Pool, PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise'
 
-let pool: Pool | null = null
+// 1. Evitar que el Hot Reload de Next.js cree múltiples pools de conexiones
+const globalForDb = globalThis as unknown as {
+  mysqlPool: Pool | undefined;
+}
+
+let pool: Pool | null = globalForDb.mysqlPool ?? null;
 
 function createPool(): Pool {
   return mysql.createPool({
@@ -21,7 +26,13 @@ function createPool(): Pool {
 }
 
 function getPool(): Pool {
-  if (!pool) pool = createPool()
+  if (!pool) {
+    pool = createPool()
+    // Guardamos la instancia globalmente solo en desarrollo
+    if (process.env.NODE_ENV !== 'production') {
+      globalForDb.mysqlPool = pool
+    }
+  }
   return pool
 }
 
@@ -36,6 +47,10 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (isRetryable(err)) {
       pool = null
+      // Limpiamos también el pool global para forzar la reconexión limpia
+      if (process.env.NODE_ENV !== 'production') {
+        globalForDb.mysqlPool = undefined
+      }
       return fn()
     }
     throw err

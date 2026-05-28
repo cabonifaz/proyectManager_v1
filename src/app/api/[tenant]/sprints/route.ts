@@ -31,16 +31,16 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     const result = await callProcedureOut(
       'sp_sprint_upsert',
       {
-        p_tenant_id:  ctx.tenantId,
-        p_project_id: body.projectId,
-        p_sprint_id:  null,
-        p_number:     body.number,
-        p_name:       body.name,
-        p_goal:       body.goal       ?? null,
-        p_start_date: body.startDate  ?? null,
-        p_end_date:   body.endDate    ?? null,
-        p_status:     body.status     ?? 'planificado',
-        p_user_id:    ctx.userId,
+        p_tenant_id:   ctx.tenantId,
+        p_project_id:  body.projectId,
+        p_sprint_id:   null, // Asuma que para PATCH enviará un ID si reutiliza este endpoint
+        p_number:      body.number,
+        p_name:        body.name,
+        p_goal:        body.goal       ?? null,
+        p_start_date:  body.startDate  ?? null,
+        p_end_date:    body.endDate    ?? null,
+        p_status:      body.status     ?? 'planificado',
+        p_user_id:     ctx.userId,
       },
       ['p_result_id', 'p_error'],
     )

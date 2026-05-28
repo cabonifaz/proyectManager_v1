@@ -156,7 +156,7 @@ export function BacklogClient({ projects, tenant, role }: {
   // ─── LÓGICA CORREGIDA PARA EL KPI DE CARGA DE DESARROLLADORES ──────────────
   // Forzamos a que todos los sprints sean números reales
   const sprints = Array.from(
-    new Set(items.map(i => Number(i.sprint_num)).filter(n => !isNaN(n) && n > 0))
+    new Set(items.map(i => Number(i.sprint_num)).filter(n => !isNaN(n) && n >= 0))
   ).sort((a, b) => a - b)
 
   const targetSprintNum = sprintFilter ? Number(sprintFilter) : (sprints.length > 0 ? Math.max(...sprints) : null)

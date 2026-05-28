@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Role } from '@/lib/rbac'
 
-// 1. AÑADIDO: is_member para el filtro del combo
 interface Project { id: number; code: string; name: string; is_member?: number }
 interface Member  { id: number; name: string; role: string }
 interface Sprint {
@@ -18,6 +17,8 @@ interface SprintItem {
   progress: number; status: string; sprint_num: number | null
   eta: string | null; reg_date: string; comment: string
   tech_columns: TechVal[]
+  priority?: number;            // Incorporación de prioridad a nivel de item
+  review_date?: string | null;  // Incorporación de fecha a nivel de item
 }
 
 const STATUS_OPTIONS = [
@@ -39,7 +40,6 @@ const STATUS_COLORS: Record<string, string> = {
 export function SprintClient({ projects, members, tenant, role, userId }: {
   projects: Project[]; members: Member[]; tenant: string; role: Role; userId: number
 }) {
-  // 2. CORRECCIÓN DEL COMBO: Filtramos solo los permitidos
   const allowedProjects = projects.filter(p => 
     role === 'super_admin' || Number(p.is_member) > 0
   )
@@ -57,7 +57,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [showItemForm, setShowItemForm]     = useState(false)
   const [viewComment, setViewComment]       = useState<{ code: string; comment: string } | null>(null)
 
-  // 3. CORRECCIÓN DE PERMISO: Verificamos contra el proyecto actual
   const currentProject = allowedProjects.find(p => p.id === projectId)
   const canManageSprint = role === 'super_admin' || Number(currentProject?.is_member) > 0
   const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
@@ -130,11 +129,9 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
   useEffect(() => { fetchItems() }, [statusFilters])
 
-  // Cálculos para la cabecera
   const completedItems = items.filter(i => i.status === 'completado').length
   const pct = items.length > 0 ? Math.round(completedItems / items.length * 100) : 0
   
-  // Nuevos cálculos para los indicadores visuales
   const pendingItems = items.filter(i => i.status === 'pendiente').length
   const inProgressItems = items.filter(i => i.status === 'en_progreso').length
   const inReviewItems = items.filter(i => i.status === 'en_revision').length
@@ -146,13 +143,11 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
     )
   }
 
-  // Normalizamos la fecha actual para comparaciones de ETA
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
   return (
     <div className="space-y-4">
-      {/* Selector proyecto corregido */}
       <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
         <select
           className="border rounded px-3 py-1.5 text-sm"
@@ -181,7 +176,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         )}
       </div>
 
-      {/* Header sprint activo */}
       {activeSprint ? (
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
           <div className="flex flex-wrap gap-4 items-start">
@@ -213,7 +207,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                 )}
               </div>
 
-              {/* Resumen rápido de estados para el Gestor */}
               <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap gap-4 text-xs">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-gray-300"></span>
@@ -260,10 +253,8 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         </div>
       )}
 
-      {/* Items del sprint */}
       {activeSprint && (
         <>
-          {/* Filtros */}
           <div className="bg-white rounded-lg shadow px-4 py-3 space-y-2">
             <div className="flex flex-wrap gap-2 items-center">
               <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Estado:</span>
@@ -292,7 +283,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           </div>
 
-          {/* Error */}
           {fetchError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm flex justify-between">
               <span>{fetchError}</span>
@@ -300,7 +290,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           )}
 
-          {/* Tabla */}
           <div className="overflow-x-auto bg-white rounded-lg shadow">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 border-b">
@@ -318,6 +307,8 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                       {c.name}
                     </th>
                   ))}
+                  <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Prioridad</th>
+                  <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Fec. Revisión</th>
                   <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Comentario</th>
                   <th className="px-3 py-3 w-16"></th>
                 </tr>
@@ -331,7 +322,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                   </td></tr>
                 ) : items.map(item => {
                   
-                  // Lógica para evaluar el ETA
                   let etaStatus = null;
                   let daysUntil = null;
                   if (item.eta && item.status !== 'completado') {
@@ -396,6 +386,12 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                           </td>
                         )
                       })}
+                      <td className="px-3 py-2 text-xs text-center font-bold text-gray-700 bg-gray-50 border-x border-gray-100 whitespace-nowrap">
+                        {item.priority ?? 0}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                        {item.review_date ? item.review_date.toString().slice(0, 10) : '—'}
+                      </td>
                       <td className="px-3 py-2 text-xs">
                         {item.comment ? (
                           <button
@@ -427,7 +423,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         </>
       )}
 
-      {/* Modal gestionar sprints */}
       {showSprintForm && projectId && (
         <SprintManager
           tenant={tenant}
@@ -442,7 +437,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         />
       )}
 
-      {/* Modal editar item */}
       {showItemForm && editItem && (
         <SprintItemForm
           tenant={tenant}
@@ -454,7 +448,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         />
       )}
 
-      {/* Modal comentario */}
       {viewComment && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -491,10 +484,12 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
   onSaved: () => void
 }) {
   const [form, setForm] = useState({
-    progress: item.progress,
-    status:   item.status,
-    eta:      item.eta ? item.eta.toString().slice(0, 10) : '',
-    comment:  item.comment ?? '',
+    progress:    item.progress,
+    status:      item.status,
+    eta:         item.eta ? item.eta.toString().slice(0, 10) : '',
+    comment:     item.comment ?? '',
+    priority:    item.priority ?? 0,
+    review_date: item.review_date ? item.review_date.toString().slice(0, 10) : '',
   })
 
   const [techVals, setTechVals] = useState<Record<string, string>>(() => {
@@ -525,6 +520,8 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
           sprintNum:   item.sprint_num  || null,
           eta:         form.eta         || null,
           comment:     form.comment     || null,
+          priority:    Number(form.priority),
+          reviewDate:  form.review_date || null
         }),
       })
       const json = await res.json()
@@ -604,6 +601,23 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Prioridad (0-10)</label>
+              <input type="number" min={0}
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                value={form.priority}
+                onChange={e => setForm(f => ({ ...f, priority: Number(e.target.value) }))} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Fec. Revisión</label>
+              <input type="date"
+                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600"
+                value={form.review_date}
+                onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))} />
+            </div>
+          </div>
+
           {techCols.length > 0 && (
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
               <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -660,7 +674,7 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: {
     goal:       '',
     start_date: '',
     end_date:   '',
-    status:     'planificado',
+    status:     'planificado'
   })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -680,7 +694,7 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: {
           goal:       form.goal       || null,
           startDate:  form.start_date || null,
           endDate:    form.end_date   || null,
-          status:     form.status,
+          status:     form.status
         }),
       })
       const json = await res.json()

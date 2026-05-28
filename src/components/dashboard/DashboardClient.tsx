@@ -118,13 +118,13 @@ export function DashboardClient({ projects, tenant, role: _role }: {
   }, [fetchData])
 
   const totals = data?.projects.reduce((acc, p) => ({
-    total:       acc.total       + p.total_backlog,
-    completed:   acc.completed   + p.completed,
-    in_progress: acc.in_progress + p.in_progress,
-    in_revision: acc.in_revision + p.in_revision,
-    pending:     acc.pending     + p.pending,
-    blocked:     acc.blocked     + p.blocked,
-    overdue:     acc.overdue     + p.overdue,
+    total:       acc.total       + Number(p.total_backlog || 0),
+    completed:   acc.completed   + Number(p.completed || 0),
+    in_progress: acc.in_progress + Number(p.in_progress || 0),
+    in_revision: acc.in_revision + Number(p.in_revision || 0),
+    pending:     acc.pending     + Number(p.pending || 0),
+    blocked:     acc.blocked     + Number(p.blocked || 0),
+    overdue:     acc.overdue     + Number(p.overdue || 0),
   }), { total: 0, completed: 0, in_progress: 0, in_revision: 0, pending: 0, blocked: 0, overdue: 0 })
 
   const globalPct = totals && totals.total > 0
