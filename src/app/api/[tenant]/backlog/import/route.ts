@@ -7,7 +7,6 @@ interface ColRow extends RowDataPacket { id: number; name: string; col_key: stri
 interface ExistingItem extends RowDataPacket { id: number; code: string }
 interface ExistingSprint extends RowDataPacket { id: number; number: number }
 
-// 1. Normalizador para el Backlog
 function normalizeStatus(val: string): string {
   if (!val) return 'pendiente'
   const v = String(val).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -18,7 +17,6 @@ function normalizeStatus(val: string): string {
   return 'pendiente'
 }
 
-// 2. Normalizador Exclusivo para Observaciones
 function normalizeObsStatus(val: string): string {
   if (!val) return 'abierta'
   const v = String(val).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -187,7 +185,11 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         const sprintNum = (row.sprint !== undefined && row.sprint !== null && String(row.sprint).trim() !== '') ? Number(row.sprint) : null;
 
         await query(
-          `UPDATE backlog_items SET priority = COALESCE(?, priority), review_date = COALESCE(?, review_date), sprint_num = COALESCE(?, sprint_num) WHERE id = ?`,
+          `UPDATE backlog_items 
+           SET priority = COALESCE(?, priority), 
+               review_date = COALESCE(?, review_date), 
+               sprint_num = COALESCE(?, sprint_num) 
+           WHERE id = ?`,
           [isNaN(priority) ? 0 : priority, reviewDate, sprintNum, itemId]
         )
       } catch (err: any) {
@@ -195,27 +197,37 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       }
     }
 
-    // ── FASE 4: PROCESAR OBSERVACIONES A PRUEBA DE BALAS ──
+    // ── FASE 4: PROCESAR OBSERVACIONES (CON FILTRO DE FILAS FANTASMA Y ENUM 'nota') ──
     for (const row of obsRows) {
-      if (!row.descripcion) continue
+      const rawDesc = row.descripcion ? String(row.descripcion).trim() : '';
+      const rawCode = row.codigo ? String(row.codigo).trim() : '';
       
-      // 1. Obtener ID del ticket relacionado
+      // 🚀 EL FILTRO MÁGICO: Si la fila no tiene ni código ni descripción, la ignoramos por completo
+      if (!rawCode && !rawDesc) continue;
+
+      const descText = rawDesc || rawCode;
+      
       const relatedCode = row.ticket_relacionado ? String(row.ticket_relacionado).trim().toLowerCase() : null
       const itemId = relatedCode ? existingMap.get(relatedCode) || null : null
       
-      // 2. Preparar campos
-      const obsCode = row.codigo ? String(row.codigo).trim() : ''
-      const descText = String(row.descripcion).trim()
-      
-      // Como la BD no tiene campo `code`, incrustamos el Código al inicio del Título para poder buscarlo después
-      let titleText = obsCode ? `${obsCode} - ${descText}` : descText;
+      let titleText = rawCode ? `${rawCode} - ${descText}` : descText;
       if (titleText.length > 200) titleText = titleText.substring(0, 197) + '...';
 
       const obsStatus = row.estado ? normalizeObsStatus(row.estado) : 'abierta'
       
-      // Dejamos nulo si vienen vacíos para que la BD aplique sus defaults o los llenes a mano luego
-      const obsType = row.tipo ? String(row.tipo).trim().toLowerCase() : null
-      const obsPrio = row.prioridad ? String(row.prioridad).trim().toLowerCase() : null
+      // TRADUCTOR SEGURO DE ENUM
+      let rawType = row.tipo ? String(row.tipo).trim().toLowerCase() : '';
+      let parsedType = 'nota'; 
+      if (rawType.includes('riesgo')) parsedType = 'riesgo';
+      else if (rawType.includes('bloqueo')) parsedType = 'bloqueo';
+      else if (rawType.includes('mejora')) parsedType = 'mejora';
+
+      const obsTypeUpdate = row.tipo ? parsedType : null;
+      const obsPrioUpdate = row.prioridad ? String(row.prioridad).trim().toLowerCase() : null;
+      
+      const obsTypeInsert = parsedType; 
+      const obsPrioInsert = row.prioridad ? String(row.prioridad).trim().substring(0, 20) : '0';
+      
       const obsEta  = parseDateStr(row.eta);
       
       const rawRegDate = row.fech_reg || row.reg_date || row.regDate || row['fech reg'] || row['FECH REG'];
@@ -225,43 +237,40 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       try {
         let existObs: ExistingItem[] = []
         
-        // 3. Buscar si la observación ya existe por su código incrustado en el título
-        if (obsCode) {
+        if (rawCode) {
           existObs = await query<ExistingItem>(
-            `SELECT id FROM observaciones WHERE project_id = ? AND title LIKE ? LIMIT 1`, 
-            [projectId, `${obsCode}%`]
+            `SELECT id FROM observaciones WHERE project_id = ? AND titulo LIKE ? LIMIT 1`, 
+            [projectId, `${rawCode}%`]
           )
         } else {
           existObs = await query<ExistingItem>(
-            `SELECT id FROM observaciones WHERE project_id = ? AND description = ? LIMIT 1`, 
+            `SELECT id FROM observaciones WHERE project_id = ? AND descripcion = ? LIMIT 1`, 
             [projectId, descText]
           )
         }
         
         if (existObs.length > 0) {
-          // ACTUALIZAR EXISTENTE
           await query(
             `UPDATE observaciones 
-             SET title=?, description=?, status=?, item_id=?, type=COALESCE(?, type), priority=COALESCE(?, priority), eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
+             SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), prioridad=COALESCE(?, prioridad), eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
              WHERE id=?`,
-            [titleText, descText, obsStatus, itemId, obsType, obsPrio, obsEta, ctx.userId, existObs[0].id]
+            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsPrioUpdate, obsEta, ctx.userId, existObs[0].id]
           )
           results.oUpdated++
         } else {
-          // CREAR NUEVA OBSERVACIÓN (Insertando el tenant_id obligatorio)
           await query(
             `INSERT INTO observaciones 
-             (tenant_id, project_id, item_id, type, priority, title, description, status, eta, created_by, created_at) 
+             (tenant_id, project_id, backlog_item_id, tipo, prioridad, titulo, descripcion, estado, eta, created_by, created_at) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [ctx.tenantId, projectId, itemId, obsType, obsPrio, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
+            [ctx.tenantId, projectId, itemId, obsTypeInsert, obsPrioInsert, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
           )
           results.oCreated++
         }
       } catch (err: any) {
-        errors.push(`Observación ${obsCode || 'Sin código'}: ${err.message}`)
+        errors.push(`Fallo al insertar observación [${rawCode || descText.substring(0,20)}]: ${err.message}`)
       }
     }
-
+    
     return NextResponse.json({
       sprintsCreated: results.sprints,
       backlogCreated: results.bCreated,

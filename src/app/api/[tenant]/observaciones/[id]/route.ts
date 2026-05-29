@@ -10,23 +10,28 @@ export async function PATCH(
     const { ctx, errorResponse } = await guardRoute(req, 'observacion:update')
     if (errorResponse) return errorResponse
 
-    let body: Record<string, unknown> = {}
+    let body: Record<string, any> = {}
     try { body = await req.json() } catch {
       return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
     }
+
+    // 🛡️ LIMPIEZA DE SEGURIDAD PARA EVITAR DATA TRUNCATED
+    // Si 'tipo' o 'prioridad' vienen vacíos o indefinidos, forzamos un valor seguro
+    const safeTipo = body.tipo ? String(body.tipo).trim().substring(0, 20) : 'nota';
+    const safePrioridad = body.prioridad ? String(body.prioridad).trim().substring(0, 20) : '0';
 
     const result = await callProcedureOut(
       'sp_observacion_update',
       {
         p_tenant_id:    ctx.tenantId,
         p_id:           Number(params.id),
-        p_tipo:         body.tipo,
-        p_prioridad:    body.prioridad,
-        p_titulo:       body.titulo,
-        p_descripcion:  body.descripcion   ?? null,
-        p_estado:       body.estado,
-        p_eta:          body.eta           ?? null,
-        p_entregado_at: body.entregadoAt   ?? null,
+        p_tipo:         safeTipo,       // Usamos el valor limpio
+        p_prioridad:    safePrioridad,  // Usamos el valor limpio
+        p_titulo:       body.titulo ?? 'Sin título',
+        p_descripcion:  body.descripcion ?? null,
+        p_estado:       body.estado ?? 'abierta',
+        p_eta:          body.eta ?? null,
+        p_entregado_at: body.entregadoAt ?? null,
         p_updated_by:   ctx.userId,
       },
       ['p_error'],

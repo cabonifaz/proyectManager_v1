@@ -12,6 +12,8 @@ interface BacklogItem {
   progress: number; status: string; sprint_num: number | string | null
   eta: string | null; reg_date: string; comment: string
   tech_columns: TechVal[]
+  priority?: number;            // <-- Añadido
+  review_date?: string | null;  // <-- Añadido
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -153,8 +155,6 @@ export function BacklogClient({ projects, tenant, role }: {
     }
   }
 
-  // ─── LÓGICA CORREGIDA PARA EL KPI DE CARGA DE DESARROLLADORES ──────────────
-  // Forzamos a que todos los sprints sean números reales
   const sprints = Array.from(
     new Set(items.map(i => Number(i.sprint_num)).filter(n => !isNaN(n) && n >= 0))
   ).sort((a, b) => a - b)
@@ -164,7 +164,6 @@ export function BacklogClient({ projects, tenant, role }: {
   const devLoad: Record<string, number> = {}
   if (targetSprintNum !== null) {
     items
-      // Convertimos a número de forma segura para comparar
       .filter(i => Number(i.sprint_num) === targetSprintNum && i.status !== 'completado' && i.status !== 'cancelado')
       .forEach(item => {
         item.tech_columns?.forEach(tc => {
@@ -176,7 +175,6 @@ export function BacklogClient({ projects, tenant, role }: {
       })
   }
   const devLoadEntries = Object.entries(devLoad).sort((a, b) => b[1] - a[1])
-  // ────────────────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
@@ -260,7 +258,6 @@ export function BacklogClient({ projects, tenant, role }: {
         </div>
       </div>
 
-      {/* KPI DE CARGA DE DESARROLLADORES AHORA SIEMPRE VISIBLE */}
       {targetSprintNum !== null && (
         <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-4 items-center border-l-4 border-blue-500">
           <div className="border-r border-gray-100 pr-4">
@@ -286,7 +283,6 @@ export function BacklogClient({ projects, tenant, role }: {
         </div>
       )}
 
-      {/* Error */}
       {fetchError && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm flex justify-between items-center">
           <span>{fetchError}</span>
@@ -305,8 +301,9 @@ export function BacklogClient({ projects, tenant, role }: {
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Avance</th>
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Sprint</th>
+              <th className="px-3 py-3 text-left font-medium text-orange-600 whitespace-nowrap">Prio</th>
+              <th className="px-3 py-3 text-left font-medium text-orange-600 whitespace-nowrap">Fec. Rev</th>
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">ETA</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Fec. Reg</th>
               {techCols.map(c => (
                 <th key={c.col_key} className="px-3 py-3 text-left font-medium text-blue-600 whitespace-nowrap">
                   {c.name}
@@ -318,9 +315,7 @@ export function BacklogClient({ projects, tenant, role }: {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr>
-                <td colSpan={99} className="px-3 py-10 text-center text-gray-400">Cargando...</td>
-              </tr>
+              <tr><td colSpan={99} className="px-3 py-10 text-center text-gray-400">Cargando...</td></tr>
             ) : items.length === 0 ? (
               <tr>
                 <td colSpan={99} className="px-3 py-10 text-center text-gray-400">
@@ -337,10 +332,7 @@ export function BacklogClient({ projects, tenant, role }: {
                 <td className="px-3 py-2 whitespace-nowrap">
                   <div className="flex items-center gap-1 w-24">
                     <div className="flex-1 bg-gray-200 rounded-full h-1.5">
-                      <div
-                        className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-                        style={{ width: `${item.progress}%` }}
-                      />
+                      <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style={{ width: `${item.progress}%` }} />
                     </div>
                     <span className="text-xs text-gray-500 w-8 text-right font-medium">{item.progress}%</span>
                   </div>
@@ -350,22 +342,13 @@ export function BacklogClient({ projects, tenant, role }: {
                     {item.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap font-medium">
-                  {item.sprint_num ?? '—'}
-                </td>
-                <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                  {item.eta ? item.eta.toString().slice(0, 10) : '—'}
-                </td>
-                <td className="px-3 py-2 text-gray-400 text-xs whitespace-nowrap">
-                  {item.reg_date ? item.reg_date.toString().slice(0, 10) : '—'}
-                </td>
+                <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap font-medium">{item.sprint_num ?? '—'}</td>
+                <td className="px-3 py-2 text-center text-gray-600 whitespace-nowrap font-medium">{item.priority ?? 0}</td>
+                <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{item.review_date ? item.review_date.toString().slice(0, 10) : '—'}</td>
+                <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{item.eta ? item.eta.toString().slice(0, 10) : '—'}</td>
                 {techCols.map(col => {
                   const val = item.tech_columns?.find(t => t.col_key === col.col_key)
-                  return (
-                    <td key={col.col_key} className="px-3 py-2 text-xs">
-                      <div className="text-gray-700 whitespace-nowrap">{val?.value || '—'}</div>
-                    </td>
-                  )
+                  return <td key={col.col_key} className="px-3 py-2 text-xs"><div className="text-gray-700 whitespace-nowrap">{val?.value || '—'}</div></td>
                 })}
                 <td className="px-3 py-2 text-xs">
                   {item.comment ? (
@@ -405,7 +388,6 @@ export function BacklogClient({ projects, tenant, role }: {
         </table>
       </div>
 
-      {/* Modal form item */}
       {showForm && projectId && (
         <BacklogForm
           tenant={tenant}
@@ -417,7 +399,6 @@ export function BacklogClient({ projects, tenant, role }: {
         />
       )}
 
-      {/* Modal config columnas */}
       {showColConfig && projectId && (
         <ColumnConfig
           tenant={tenant}
@@ -428,7 +409,6 @@ export function BacklogClient({ projects, tenant, role }: {
         />
       )}
 
-      {/* Modal importar Excel */}
       {showImport && projectId && (
         <ImportModal
           tenant={tenant}
@@ -439,7 +419,6 @@ export function BacklogClient({ projects, tenant, role }: {
         />
       )}
 
-      {/* Modal ver comentario */}
       {viewComment && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
@@ -448,23 +427,13 @@ export function BacklogClient({ projects, tenant, role }: {
                 <p className="text-[10px] text-gray-400 font-mono font-bold uppercase tracking-widest">{viewComment.code}</p>
                 <h2 className="text-lg font-bold text-gray-800">Comentario</h2>
               </div>
-              <button
-                onClick={() => setViewComment(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
+              <button onClick={() => setViewComment(null)} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
             </div>
             <p className="text-sm text-gray-700 whitespace-pre-wrap bg-yellow-50 rounded-lg p-4 border border-yellow-100 leading-relaxed italic">
               "{viewComment.comment}"
             </p>
             <div className="flex justify-end mt-6 pt-4 border-t">
-              <button
-                onClick={() => setViewComment(null)}
-                className="px-6 py-2 text-sm border rounded-lg font-medium hover:bg-gray-50 transition-colors"
-              >
-                Cerrar
-              </button>
+              <button onClick={() => setViewComment(null)} className="px-6 py-2 text-sm border rounded-lg font-medium hover:bg-gray-50 transition-colors">Cerrar</button>
             </div>
           </div>
         </div>
@@ -473,15 +442,8 @@ export function BacklogClient({ projects, tenant, role }: {
   )
 }
 
-// ─── Form item backlog ────────────────────────────────────────────────────────
-
 function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
-  tenant: string
-  projectId: number
-  item: BacklogItem | null
-  techCols: TechCol[]
-  onClose: () => void
-  onSaved: () => void
+  tenant: string; projectId: number; item: BacklogItem | null; techCols: TechCol[]; onClose: () => void; onSaved: () => void
 }) {
   const [form, setForm] = useState({
     code:        item?.code        ?? '',
@@ -492,6 +454,8 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     sprint_num:  item?.sprint_num  ?? '',
     eta:         item?.eta ? item.eta.toString().slice(0, 10) : '',
     comment:     item?.comment     ?? '',
+    priority:    item?.priority    ?? 0,  // <-- NUEVO
+    review_date: item?.review_date ? item.review_date.toString().slice(0, 10) : '', // <-- NUEVO
   })
 
   const [techVals, setTechVals] = useState<Record<string, string>>(() => {
@@ -529,6 +493,8 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           sprintNum:   form.sprint_num  || null,
           eta:         form.eta         || null,
           comment:     form.comment     || null,
+          priority:    Number(form.priority),    // <-- NUEVO
+          reviewDate:  form.review_date || null, // <-- NUEVO
         }),
       })
 
@@ -549,11 +515,7 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           const r = await fetch(`/api/${tenant}/backlog/${itemId}/tech`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              columnId: col.id,
-              value:    val || null,
-              eta:      null,
-            }),
+            body: JSON.stringify({ columnId: col.id, value: val || null, eta: null }),
           })
           if (!r.ok) {
             const rj = await r.json()
@@ -583,55 +545,33 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           <button onClick={onClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded">
-            {error}
-          </div>
-        )}
+        {error && <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Código *</label>
-              <input
-                required
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono"
-                value={form.code}
-                onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
-                placeholder="Ej: FEAT-123"
-              />
+              <input required className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono"
+                value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="Ej: FEAT-123" />
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Módulo</label>
-              <input
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                value={form.module}
-                onChange={e => setForm(f => ({ ...f, module: e.target.value }))}
-                placeholder="Ej: Autenticación"
-              />
+              <input className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                value={form.module} onChange={e => setForm(f => ({ ...f, module: e.target.value }))} placeholder="Ej: Autenticación" />
             </div>
           </div>
 
           <div>
             <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Descripción General *</label>
-            <textarea
-              required
-              rows={3}
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
-              value={form.description}
-              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Describe lo que se debe hacer..."
-            />
+            <textarea required rows={3} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe lo que se debe hacer..." />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Estado</label>
-              <select
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                value={form.status}
-                onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-              >
+              <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
                 <option value="pendiente">Pendiente</option>
                 <option value="en_progreso">En progreso</option>
                 <option value="en_revision">En revisión</option>
@@ -642,35 +582,37 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Avance %</label>
               <div className="flex items-center gap-2">
-                <input
-                  type="number" min={0} max={100}
-                  className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  value={form.progress}
-                  onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))}
-                />
+                <input type="number" min={0} max={100} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  value={form.progress} onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))} />
                 <span className="text-sm font-medium text-gray-500 w-8">%</span>
               </div>
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Sprint #</label>
-              <input
-                type="number"
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                value={form.sprint_num}
-                onChange={e => setForm(f => ({ ...f, sprint_num: e.target.value }))}
-                placeholder="Ej: 1"
-              />
+              <input type="number" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                value={form.sprint_num} onChange={e => setForm(f => ({ ...f, sprint_num: e.target.value }))} placeholder="Ej: 1" />
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">ETA (Fecha estimada)</label>
-              <input
-                type="date"
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600"
-                value={form.eta}
-                onChange={e => setForm(f => ({ ...f, eta: e.target.value }))}
-              />
+              <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600"
+                value={form.eta} onChange={e => setForm(f => ({ ...f, eta: e.target.value }))} />
             </div>
           </div>
+
+          {/* 👇 NUEVOS CAMPOS AQUÍ 👇 */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Prioridad (0-10)</label>
+              <input type="number" min="0" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                value={form.priority} onChange={e => setForm(f => ({ ...f, priority: Number(e.target.value) }))} />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Fecha de Revisión</label>
+              <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600"
+                value={form.review_date} onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))} />
+            </div>
+          </div>
+          {/* 👆 FIN NUEVOS CAMPOS 👆 */}
 
           {techCols.length > 0 && (
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
@@ -682,12 +624,8 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
                 {techCols.map(col => (
                   <div key={col.col_key}>
                     <label className="block text-xs font-medium text-gray-700 mb-1">{col.name}</label>
-                    <input
-                      placeholder="Valor / Responsable"
-                      className="w-full border rounded px-3 py-1.5 text-sm bg-white outline-none focus:border-blue-500"
-                      value={techVals[col.col_key] ?? ''}
-                      onChange={e => setTechVals(v => ({ ...v, [col.col_key]: e.target.value }))}
-                    />
+                    <input placeholder="Valor / Responsable" className="w-full border rounded px-3 py-1.5 text-sm bg-white outline-none focus:border-blue-500"
+                      value={techVals[col.col_key] ?? ''} onChange={e => setTechVals(v => ({ ...v, [col.col_key]: e.target.value }))} />
                   </div>
                 ))}
               </div>
@@ -696,29 +634,13 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
 
           <div>
             <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Notas / Comentarios</label>
-            <textarea
-              rows={2}
-              className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
-              value={form.comment}
-              onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
-              placeholder="Información extra o dependencias..."
-            />
+            <textarea rows={2} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none"
+              value={form.comment} onChange={e => setForm(f => ({ ...f, comment: e.target.value }))} placeholder="Información extra o dependencias..." />
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-600"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors min-w-[120px]"
-            >
+            <button type="button" onClick={onClose} disabled={saving} className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-600">Cancelar</button>
+            <button type="submit" disabled={saving} className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors min-w-[120px]">
               {saving ? 'Guardando...' : 'Guardar Item'}
             </button>
           </div>
@@ -728,14 +650,8 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
   )
 }
 
-// ─── Config columnas tech ─────────────────────────────────────────────────────
-
 function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
-  tenant: string
-  projectId: number
-  columns: TechCol[]
-  onClose: () => void
-  onSaved: () => void
+  tenant: string; projectId: number; columns: TechCol[]; onClose: () => void; onSaved: () => void
 }) {
   const [form, setForm] = useState({ name: '', colType: 'both' })
   const [saving, setSaving] = useState(false)
@@ -758,11 +674,7 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
         }),
       })
       const json = await res.json()
-      if (!res.ok) {
-        setError(`Error ${res.status}: ${json.error ?? 'Error al guardar'}`)
-        setSaving(false)
-        return
-      }
+      if (!res.ok) { setError(`Error ${res.status}: ${json.error ?? 'Error al guardar'}`); setSaving(false); return }
       setForm({ name: '', colType: 'both' })
       onSaved()
     } catch (e) {
@@ -780,16 +692,13 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
         </div>
 
         <div className="mb-6">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">
-            Columnas actuales ({columns.length})
-          </p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Columnas actuales ({columns.length})</p>
           {columns.length === 0 ? (
             <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded text-center">No hay columnas dinámicas configuradas</p>
           ) : (
             <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
               {columns.map(c => (
-                <div key={c.col_key}
-                  className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
+                <div key={c.col_key} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
                   <span className="font-medium text-gray-700">{c.name}</span>
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 uppercase rounded">
                     {c.col_type === 'both' ? 'Backlog + Sprint' : c.col_type}
@@ -801,53 +710,26 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
         </div>
 
         <div className="border-t pt-5">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">
-            Agregar nueva columna
-          </p>
-
-          {error && (
-            <div className="mb-4 p-2 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded">
-              {error}
-            </div>
-          )}
-
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Agregar nueva columna</p>
+          {error && <div className="mb-4 p-2 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded">{error}</div>}
           <form onSubmit={handleAdd} className="space-y-4">
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Nombre de la columna *</label>
-              <input
-                required
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                placeholder="Ej: Base de Datos, AWS, QA..."
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              />
+              <input required className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                placeholder="Ej: Base de Datos, AWS, QA..." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Visible en</label>
-              <select
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                value={form.colType}
-                onChange={e => setForm(f => ({ ...f, colType: e.target.value }))}
-              >
+              <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
+                value={form.colType} onChange={e => setForm(f => ({ ...f, colType: e.target.value }))}>
                 <option value="both">Backlog y Sprint</option>
                 <option value="backlog">Solo en Backlog</option>
                 <option value="sprint">Solo en Sprint</option>
               </select>
             </div>
             <div className="flex justify-end gap-3 pt-3">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={saving}
-                className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 font-medium text-gray-600 transition-colors"
-              >
-                Cerrar
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors"
-              >
+              <button type="button" onClick={onClose} disabled={saving} className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 font-medium text-gray-600 transition-colors">Cerrar</button>
+              <button type="submit" disabled={saving} className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors">
                 {saving ? 'Agregando...' : 'Agregar Columna'}
               </button>
             </div>

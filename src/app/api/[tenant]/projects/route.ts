@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedure } from '@/lib/db'
+import { callProcedure, callProcedureOut } from '@/lib/db' // <-- Importamos callProcedureOut
 import { RowDataPacket } from 'mysql2/promise'
 
 export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
@@ -29,7 +29,6 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
   }
 }
 
-
 export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'project:create')
@@ -37,24 +36,31 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
 
     const body = await req.json()
     
-    // Corrección: 10 parámetros de entrada (?) y 2 parámetros de salida (@)
-    const result = await callProcedure(
-      'CALL sp_project_upsert(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, @p_result_id, @p_error)',
-      [
-        ctx.tenantId,
-        null, 
-        body.managerId ?? null,
-        body.code,
-        body.name,
-        body.description ?? null,
-        body.status ?? 'activo',
-        body.startDate ?? null,
-        body.endDate ?? null,
-        ctx.userId 
-      ]
+    // Usamos callProcedureOut mapeando los parámetros de entrada y atrapando las variables de salida
+    const result = await callProcedureOut(
+      'sp_project_upsert',
+      {
+        p_tenant_id:   ctx.tenantId,
+        p_project_id:  null,
+        p_manager_id:  body.managerId ?? null,
+        p_code:        body.code,
+        p_name:        body.name,
+        p_description: body.description ?? null,
+        p_status:      body.status ?? 'activo',
+        p_start_date:  body.startDate ?? null,
+        p_end_date:    body.endDate ?? null,
+        p_user_id:     ctx.userId
+      },
+      ['p_result_id', 'p_error'] // <-- Le decimos explícitamente qué variables OUT debe atrapar
     )
 
-    return NextResponse.json({ id: result[0][0].p_result_id }, { status: 201 })
+    // Validamos si el SP arrojó un error controlado (ej. código duplicado)
+    if (result.p_error) {
+      return NextResponse.json({ error: result.p_error }, { status: 400 })
+    }
+
+    // Devolvemos el ID atrapado correctamente
+    return NextResponse.json({ id: result.p_result_id }, { status: 201 })
   } catch (err) {
     return handleApiError(err)
   }
