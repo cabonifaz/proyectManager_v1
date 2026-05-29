@@ -8,23 +8,42 @@ interface ExistingItem extends RowDataPacket { id: number; code: string }
 interface ExistingSprint extends RowDataPacket { id: number; number: number }
 
 function normalizeStatus(val: string): string {
-  if (!val) return 'pendiente'
-  const v = String(val).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  if (v.includes('aprobado') || v.includes('qa ok') || v.includes('complet')) return 'completado'
-  if (v.includes('observado') || v.includes('desestimado') || v.includes('qa obs') || v.includes('bloquea')) return 'bloqueado'
-  if (v.includes('levantado') || v.includes('asignado') || v.includes('progreso')) return 'en_progreso'
-  if (v.includes('atendido') || v.includes('qa') || v.includes('revision')) return 'en_revision'
-  return 'pendiente'
+  if (!val) return 'pendiente';
+  const v = String(val).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Backlog: Completado (4.1. APROBADO, 5. REV QA OK)
+  if (v.includes('aprobado') || v.includes('qa ok')) return 'completado';
+  
+  // Backlog: Bloqueado (0 DESESTIMADO, 4.2. OBSERVADO, 5.1 REV QA OBS)
+  if (v.includes('desestimado') || v.includes('observado') || v.includes('qa obs')) return 'bloqueado';
+  
+  // Backlog: En Revisión (3 ATENDIDO, 4.3 LEVANTADO, 5.2 REV QA LEVANTADO)
+  if (v.includes('atendido') || v.includes('levantado')) return 'en_revision';
+  
+  // Backlog: En Progreso (2 ASIGNADO)
+  if (v.includes('asignado')) return 'en_progreso';
+
+  // Por defecto (1 PENDIENTE)
+  return 'pendiente';
 }
 
 function normalizeObsStatus(val: string): string {
-  if (!val) return 'abierta'
-  const v = String(val).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-  if (v.includes('abiert') || v.includes('pendiente')) return 'abierta'
-  if (v.includes('seguimiento') || v.includes('progreso') || v.includes('levantado')) return 'en_seguimiento'
-  if (v.includes('resuelt') || v.includes('ok') || v.includes('complet') || v.includes('atendido')) return 'resuelta'
-  if (v.includes('cerrad') || v.includes('aprobado') || v.includes('desestimado')) return 'cerrada'
-  return 'abierta'
+  if (!val) return 'abierta';
+  const v = String(val).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  // Observación Cerrada (4.1. APROBADO, 5. REV QA OK, 0 DESESTIMADO)
+  if (v.includes('aprobado') || v.includes('qa ok') || v.includes('desestimado')) return 'cerrada';
+
+  // Observación Resuelta (3 ATENDIDO, 4.3 LEVANTADO, 5.2 REV QA LEVANTADO)
+  if (v.includes('atendido') || v.includes('levantado')) return 'resuelta';
+
+  // Observación En Seguimiento (2 ASIGNADO, 4.2. OBSERVADO, 5.1 REV QA OBS)
+  if (v.includes('asignado') || v.includes('observado') || v.includes('qa obs')) return 'en_seguimiento';
+
+  // Observación Abierta (1 PENDIENTE)
+  if (v.includes('pendiente')) return 'abierta';
+
+  return 'abierta';
 }
 
 function parseDateStr(val: any): string | null {
@@ -197,25 +216,26 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       }
     }
 
-    // ── FASE 4: PROCESAR OBSERVACIONES (CON FILTRO DE FILAS FANTASMA Y ENUM 'nota') ──
+    // ── FASE 4: PROCESAR OBSERVACIONES (FILTRADO, RE-MAPEO Y ASIGNACIÓN DE RESPONSABLES) ──
     for (const row of obsRows) {
       const rawDesc = row.descripcion ? String(row.descripcion).trim() : '';
-      const rawCode = row.codigo ? String(row.codigo).trim() : '';
+      const ticketRel = row.ticket_relacionado ? String(row.ticket_relacionado).trim() : '';
       
-      // 🚀 EL FILTRO MÁGICO: Si la fila no tiene ni código ni descripción, la ignoramos por completo
-      if (!rawCode && !rawDesc) continue;
+      // 🚀 REQUERIMIENTO 1: Descartar filas que no contengan datos esenciales
+      if (!ticketRel && !rawDesc) continue;
 
-      const descText = rawDesc || rawCode;
-      
-      const relatedCode = row.ticket_relacionado ? String(row.ticket_relacionado).trim().toLowerCase() : null
-      const itemId = relatedCode ? existingMap.get(relatedCode) || null : null
-      
-      let titleText = rawCode ? `${rawCode} - ${descText}` : descText;
-      if (titleText.length > 200) titleText = titleText.substring(0, 197) + '...';
+      // 🚀 REQUERIMIENTO 2 y 3: Re-mapeo explícito de columnas según directrices
+      // Título <- Ticket Relacionado
+      // Descripción <- Descripción General
+      const titleText = ticketRel || 'Sin código';
+      const descText = rawDesc || 'Sin descripción';
 
-      const obsStatus = row.estado ? normalizeObsStatus(row.estado) : 'abierta'
+      const relatedCode = ticketRel.toLowerCase();
+      const itemId = relatedCode ? existingMap.get(relatedCode) || null : null;
+
+      const obsStatus = row.estado ? normalizeObsStatus(row.estado) : 'abierta';
       
-      // TRADUCTOR SEGURO DE ENUM
+      // Traductor seguro de estructura ENUM
       let rawType = row.tipo ? String(row.tipo).trim().toLowerCase() : '';
       let parsedType = 'nota'; 
       if (rawType.includes('riesgo')) parsedType = 'riesgo';
@@ -236,25 +256,20 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
 
       try {
         let existObs: ExistingItem[] = []
+        let currentObsId = 0;
         
-        if (rawCode) {
-          existObs = await query<ExistingItem>(
-            `SELECT id FROM observaciones WHERE project_id = ? AND titulo LIKE ? LIMIT 1`, 
-            [projectId, `${rawCode}%`]
-          )
-        } else {
-          existObs = await query<ExistingItem>(
-            `SELECT id FROM observaciones WHERE project_id = ? AND descripcion = ? LIMIT 1`, 
-            [projectId, descText]
-          )
-        }
+        existObs = await query<ExistingItem>(
+          `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? AND descripcion = ? LIMIT 1`, 
+          [projectId, titleText, descText]
+        )
         
         if (existObs.length > 0) {
+          currentObsId = existObs[0].id;
           await query(
             `UPDATE observaciones 
              SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), prioridad=COALESCE(?, prioridad), eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
              WHERE id=?`,
-            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsPrioUpdate, obsEta, ctx.userId, existObs[0].id]
+            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsPrioUpdate, obsEta, ctx.userId, currentObsId]
           )
           results.oUpdated++
         } else {
@@ -265,12 +280,47 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
             [ctx.tenantId, projectId, itemId, obsTypeInsert, obsPrioInsert, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
           )
           results.oCreated++
+          
+          const newObs = await query<ExistingItem>(
+            `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? AND descripcion = ? ORDER BY id DESC LIMIT 1`, 
+            [projectId, titleText, descText]
+          )
+          if (newObs.length > 0) currentObsId = newObs[0].id;
         }
+
+        // 🚀 ASIGNACIÓN DE RESPONSABLES (Tabla observacion_asignaciones)
+        if (currentObsId) {
+          // 1. Limpiamos las asignaciones anteriores para evitar duplicados si re-importas el excel
+          try {
+            await query(`DELETE FROM observacion_asignaciones WHERE observacion_id = ?`, [currentObsId]);
+          } catch (e) {}
+
+          // 2. Insertamos a los responsables detectados en las columnas del Excel
+          for (const col of techCols) {
+            const colNameNorm = col.name.toLowerCase().replace(/[\s.]+/g, '_')
+            const val = row[col.col_key] ?? row[colNameNorm] ?? row[col.name.toLowerCase()] ?? row[col.name] ?? null
+            
+            if (!val || String(val).trim() === '') continue;
+            
+            try {
+              // Inserción directa respetando estrictamente tu esquema
+              await query(
+                `INSERT INTO observacion_asignaciones 
+                 (tenant_id, observacion_id, column_id, col_key, tech_name, developer_name, created_at) 
+                 VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+                [ctx.tenantId, currentObsId, col.id, col.col_key, col.name, String(val).trim()]
+              )
+            } catch (assignErr: any) {
+              // Silenciado intencionalmente para no frenar la importación masiva por una columna
+            }
+          }
+        }
+
       } catch (err: any) {
-        errors.push(`Fallo al insertar observación [${rawCode || descText.substring(0,20)}]: ${err.message}`)
+        errors.push(`Fallo al procesar observación [${titleText}]: ${err.message}`)
       }
     }
-    
+
     return NextResponse.json({
       sprintsCreated: results.sprints,
       backlogCreated: results.bCreated,

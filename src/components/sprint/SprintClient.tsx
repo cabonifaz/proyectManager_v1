@@ -58,7 +58,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [viewComment, setViewComment]       = useState<{ code: string; comment: string } | null>(null)
 
   const currentProject = allowedProjects.find(p => p.id === projectId)
-  const canManageSprint = role === 'super_admin' || Number(currentProject?.is_member) > 0
+  const canManageSprint = role !== 'desarrollador' && (role === 'super_admin' || Number(currentProject?.is_member) > 0)
   const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
 
   const fetchTechCols = useCallback(async () => {

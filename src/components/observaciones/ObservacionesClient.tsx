@@ -100,8 +100,10 @@ export function ObservacionesClient({ projects, tenant, role }: {
   const [detailAsigns, setDetailAsigns] = useState<Asignacion[]>([])
   const [saving, setSaving]             = useState(false)
   const [formError, setFormError]       = useState('')
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [itemToDelete, setItemToDelete]           = useState<Observacion | null>(null)
 
-  const canCreate    = role !== 'desarrollador' || true  // todos pueden crear
+ const canCreate    = role !== 'desarrollador';
   const canEdit      = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
   const canDelete    = ['super_admin','gestor_proyecto'].includes(role)
   const canAssign    = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
@@ -277,15 +279,18 @@ export function ObservacionesClient({ projects, tenant, role }: {
     }
   }
 
-  async function handleDelete(item: Observacion) {
-    if (!confirm(`¿Eliminar la observación "${item.titulo}"?`)) return
+  async function confirmDelete() {
+    if (!itemToDelete) return
     try {
-      const res  = await fetch(`/api/${tenant}/observaciones/${item.id}`, { method: 'DELETE' })
+      const res  = await fetch(`/api/${tenant}/observaciones/${itemToDelete.id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) { alert(json.error ?? 'Error al eliminar'); return }
       fetchItems()
     } catch {
       alert('Error de conexión')
+    } finally {
+      setIsDeleteModalOpen(false)
+      setItemToDelete(null)
     }
   }
 
@@ -358,11 +363,11 @@ export function ObservacionesClient({ projects, tenant, role }: {
         />
 
         <button
-          onClick={openCreate}
-          className="ml-auto bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          + Nueva observación
-        </button>
+  onClick={openCreate}
+  className="ml-auto bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
+>
+  + Nueva observación
+</button>
       </div>
 
       {fetchError && (
@@ -443,7 +448,12 @@ export function ObservacionesClient({ projects, tenant, role }: {
                         <button onClick={() => openEdit(item)} className="text-xs text-blue-600 hover:underline">Editar</button>
                       )}
                       {canDelete && (
-                        <button onClick={() => handleDelete(item)} className="text-xs text-red-500 hover:underline">Eliminar</button>
+                        <button 
+  onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} 
+  className="text-xs text-red-500 hover:underline"
+>
+  Eliminar
+</button>
                       )}
                     </div>
                   </td>
@@ -744,6 +754,39 @@ export function ObservacionesClient({ projects, tenant, role }: {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Modal confirmar eliminación ── */}
+      {isDeleteModalOpen && itemToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">
+                Confirmar eliminación
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                ¿Estás seguro de que deseas eliminar la observación <strong className="text-gray-800">"{itemToDelete.titulo}"</strong>? Esta acción no se puede deshacer.
+              </p>
+              
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setIsDeleteModalOpen(false);
+                    setItemToDelete(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
           </div>
         </div>

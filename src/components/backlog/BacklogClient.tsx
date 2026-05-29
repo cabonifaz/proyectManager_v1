@@ -45,6 +45,10 @@ export function BacklogClient({ projects, tenant, role }: {
   const [showColConfig, setShowColConfig] = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [viewComment, setViewComment]     = useState<{ code: string; comment: string } | null>(null)
+  
+  // 👇 NUEVOS ESTADOS PARA EL MODAL DE ELIMINACIÓN 👇
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [itemToDelete, setItemToDelete]           = useState<number | null>(null)
 
   const canCreate     = ['super_admin','gestor_proyecto'].includes(role)
   const canEdit       = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
@@ -111,15 +115,19 @@ export function BacklogClient({ projects, tenant, role }: {
     if (projectId) fetchItems()
   }, [statusFilter, sprintFilter, search])
 
-  async function handleDelete(id: number) {
-    if (!confirm('¿Eliminar este item?')) return
+  // 👇 FUNCIÓN ACTUALIZADA PARA CONFIRMAR ELIMINACIÓN 👇
+  async function confirmDelete() {
+    if (!itemToDelete) return
     try {
-      const res  = await fetch(`/api/${tenant}/backlog/${id}`, { method: 'DELETE' })
+      const res  = await fetch(`/api/${tenant}/backlog/${itemToDelete}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) { alert(`Error: ${json.error}`); return }
       fetchItems()
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
+    } finally {
+      setIsDeleteModalOpen(false)
+      setItemToDelete(null)
     }
   }
 
@@ -373,8 +381,9 @@ export function BacklogClient({ projects, tenant, role }: {
                       </button>
                     )}
                     {canDelete && (
+                      // 👇 SE ACTUALIZÓ ESTE BOTÓN PARA ABRIR EL MODAL 👇
                       <button
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => { setItemToDelete(item.id); setIsDeleteModalOpen(true); }}
                         className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase transition-colors"
                       >
                         Eliminar
@@ -438,6 +447,40 @@ export function BacklogClient({ projects, tenant, role }: {
           </div>
         </div>
       )}
+
+      {/* 👇 NUEVO MODAL DE ELIMINACIÓN 👇 */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">
+                Confirmar eliminación
+              </h3>
+              <p className="text-sm text-gray-600 mb-6">
+                ¿Estás seguro de que deseas eliminar este ítem del backlog? Esta acción no se puede deshacer y los datos se perderán permanentemente.
+              </p>
+              
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                <button
+                  onClick={() => {
+                    setIsDeleteModalOpen(false);
+                    setItemToDelete(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm transition-colors"
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -454,8 +497,8 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     sprint_num:  item?.sprint_num  ?? '',
     eta:         item?.eta ? item.eta.toString().slice(0, 10) : '',
     comment:     item?.comment     ?? '',
-    priority:    item?.priority    ?? 0,  // <-- NUEVO
-    review_date: item?.review_date ? item.review_date.toString().slice(0, 10) : '', // <-- NUEVO
+    priority:    item?.priority    ?? 0, 
+    review_date: item?.review_date ? item.review_date.toString().slice(0, 10) : '', 
   })
 
   const [techVals, setTechVals] = useState<Record<string, string>>(() => {
@@ -493,8 +536,8 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           sprintNum:   form.sprint_num  || null,
           eta:         form.eta         || null,
           comment:     form.comment     || null,
-          priority:    Number(form.priority),    // <-- NUEVO
-          reviewDate:  form.review_date || null, // <-- NUEVO
+          priority:    Number(form.priority), 
+          reviewDate:  form.review_date || null, 
         }),
       })
 
@@ -599,7 +642,6 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
             </div>
           </div>
 
-          {/* 👇 NUEVOS CAMPOS AQUÍ 👇 */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Prioridad (0-10)</label>
@@ -612,7 +654,6 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
                 value={form.review_date} onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))} />
             </div>
           </div>
-          {/* 👆 FIN NUEVOS CAMPOS 👆 */}
 
           {techCols.length > 0 && (
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
