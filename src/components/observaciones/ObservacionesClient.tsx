@@ -362,12 +362,14 @@ export function ObservacionesClient({ projects, tenant, role }: {
           className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
         />
 
-        <button
-  onClick={openCreate}
-  className="ml-auto bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
->
-  + Nueva observación
-</button>
+        {canCreate && (
+          <button
+            onClick={openCreate}
+            className="ml-auto bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
+          >
+            + Nueva observación
+          </button>
+        )}
       </div>
 
       {fetchError && (

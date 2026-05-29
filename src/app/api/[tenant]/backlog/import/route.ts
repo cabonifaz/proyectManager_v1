@@ -218,18 +218,19 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
 
     // ── FASE 4: PROCESAR OBSERVACIONES (FILTRADO, RE-MAPEO Y ASIGNACIÓN DE RESPONSABLES) ──
     for (const row of obsRows) {
-      const rawDesc = row.descripcion ? String(row.descripcion).trim() : '';
+      // 1. Extraemos las columnas exactas del Excel
+      const rawExcelDescGen = row.descripcion_general || row.descripcion || row['descripción general'] || row['DESCRIPCION GENERAL'] || '';
+      const rawExcelComentarios = row.comentario || row.comentarios || row['comentarios'] || row['COMENTARIO'] || '';
       const ticketRel = row.ticket_relacionado ? String(row.ticket_relacionado).trim() : '';
       
-      // 🚀 REQUERIMIENTO 1: Descartar filas que no contengan datos esenciales
-      if (!ticketRel && !rawDesc) continue;
+      // 🚀 REQUERIMIENTO 1: Descartar filas vacías o fantasma
+      if (!rawExcelDescGen && !rawExcelComentarios && !ticketRel) continue;
 
-      // 🚀 REQUERIMIENTO 2 y 3: Re-mapeo explícito de columnas según directrices
-      // Título <- Ticket Relacionado
-      // Descripción <- Descripción General
-      const titleText = ticketRel || 'Sin código';
-      const descText = rawDesc || 'Sin descripción';
+      // 🚀 REQUERIMIENTO 2: Re-mapeo (Título <- Desc General | Descripción <- Comentarios)
+      const titleText = String(rawExcelDescGen).trim() || 'Sin título';
+      const descText = String(rawExcelComentarios).trim() || 'Sin descripción';
 
+      // 🚀 REQUERIMIENTO 3: Relación con el Ticket del Backlog
       const relatedCode = ticketRel.toLowerCase();
       const itemId = relatedCode ? existingMap.get(relatedCode) || null : null;
 
