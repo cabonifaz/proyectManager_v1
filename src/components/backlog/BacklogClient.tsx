@@ -55,12 +55,17 @@ export function BacklogClient({ projects, tenant, role }: {
   const canDelete     = ['super_admin','gestor_proyecto'].includes(role)
   const canManageCols = ['super_admin','gestor_proyecto'].includes(role)
 
-  const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
+const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
     if (!projectId) return []
     try {
       const res  = await fetch(`/api/${tenant}/projects/${projectId}/columns`)
       const json = await res.json()
-      const cols: TechCol[] = json.data ?? []
+      
+      // 👇 Se agrega el filtro para ocultar las columnas que son "solo sprint"
+      const cols: TechCol[] = (json.data ?? []).filter((c: TechCol) => 
+        ['backlog', 'both'].includes(c.col_type)
+      )
+      
       setTechCols(cols)
       return cols
     } catch {

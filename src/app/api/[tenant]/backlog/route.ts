@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedure, callProcedureOut } from '@/lib/db'
+import { callProcedure, callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -10,11 +10,11 @@ export async function GET(req: NextRequest) {
     const { ctx, errorResponse } = await guardRoute(req, 'backlog:read')
     if (errorResponse) return errorResponse
 
-    // 1. Verificamos la sesión para saber si es Super Admin
+    // 1. Verificamos la sesión
     const session = await getServerSession(authOptions)
     const isSuperAdmin = session?.user?.role === 'super_admin'
     
-    // 2. Aplicamos la regla de tu SP: si es super admin, pasamos null. Si no, pasamos su ID.
+    // 2. Aplicamos la regla del SP
     const pUserId = isSuperAdmin ? null : ctx.userId
 
     const { searchParams } = req.nextUrl
@@ -28,35 +28,71 @@ export async function GET(req: NextRequest) {
     const limit        = Number(searchParams.get('limit')  ?? 200)
     const offset       = Number(searchParams.get('offset') ?? 0)
 
+    let rawItems: any[] = [];
+
     // Bloque para múltiples estados
     if (statusList.length > 1) {
-      const allResults: RowDataPacket[] = []
       for (const status of statusList) {
         const results = await callProcedure<RowDataPacket>(
           'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
           [ctx.tenantId, Number(projectId), status, sprintNum, search, limit, offset, pUserId],
         )
-        allResults.push(...(results[0] ?? []))
+        rawItems.push(...(results[0] ?? []))
       }
-      return NextResponse.json({ data: allResults })
+    } else {
+      // Bloque para un solo estado o ninguno
+      const results = await callProcedure<RowDataPacket>(
+        'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          ctx.tenantId,
+          Number(projectId),
+          statusList.length === 1 ? statusList[0] : singleStatus,
+          sprintNum,
+          search,
+          limit,
+          offset,
+          pUserId, 
+        ],
+      )
+      rawItems = results[0] ?? []
     }
 
-    // Bloque para un solo estado o ninguno
-    const results = await callProcedure<RowDataPacket>(
-      'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        ctx.tenantId,
-        Number(projectId),
-        statusList.length === 1 ? statusList[0] : singleStatus,
-        sprintNum,
-        search,
-        limit,
-        offset,
-        pUserId, // Aquí pasamos null o el ID, dependiendo de su rol
-      ],
-    )
+    // 🚀 PARCHE SUPER SEGURO: Inyectamos TODAS las columnas sin romper la librería
+    if (rawItems.length > 0) {
+      // 1. Clonamos los items a objetos nativos para quitar la restricción de "Solo Lectura"
+      rawItems = rawItems.map(item => ({ ...item }));
+      
+      const itemIds = rawItems.map(i => i.id);
+      // Creamos los marcadores exactos (?, ?, ?) para evitar crasheos de sintaxis SQL
+      const placeholders = itemIds.map(() => '?').join(',');
+      
+      const techRows = await query<RowDataPacket>(
+        `SELECT t.backlog_item_id, c.col_key, c.name, t.value, t.eta 
+         FROM backlog_item_tech t
+         JOIN project_columns c ON t.column_id = c.id
+         WHERE t.backlog_item_id IN (${placeholders}) AND c.deleted_at IS NULL`,
+        [...itemIds] // <-- Pasamos los IDs desestructurados
+      );
 
-    return NextResponse.json({ data: results[0] ?? [] })
+      // Mapeamos las tecnologías
+      const techMap = new Map<number, any[]>();
+      for (const row of techRows) {
+        if (!techMap.has(row.backlog_item_id)) techMap.set(row.backlog_item_id, []);
+        techMap.get(row.backlog_item_id)!.push({
+          col_key: row.col_key,
+          name: row.name,
+          value: row.value,
+          eta: row.eta
+        });
+      }
+
+      // Reemplazamos la data incompleta del SP por la data completa
+      for (const item of rawItems) {
+        item.tech_columns = JSON.stringify(techMap.get(item.id) || []);
+      }
+    }
+
+    return NextResponse.json({ data: rawItems })
   } catch (err) {
     return handleApiError(err)
   }
@@ -86,7 +122,7 @@ export async function POST(req: NextRequest) {
         p_sprint_num:  body.sprintNum   ?? null,
         p_eta:         body.eta         ?? null,
         p_comment:     body.comment     ?? null,
-        p_created_by:  ctx.userId, // Aquí sí dejamos siempre el userId porque necesitamos auditar quién lo creó
+        p_created_by:  ctx.userId, 
       },
       ['p_new_id', 'p_error'],
     )
