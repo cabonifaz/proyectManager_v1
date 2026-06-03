@@ -40,6 +40,7 @@ const BASE_HEADERS: Record<string, string> = {
   'fecha reg':           'fech_reg',
   'eta':                 'eta',
   'comentario':          'comentario',
+  'comentarios':         'comentario', // 👇 AQUÍ ESTÁ EL AJUSTE PARA EL PLURAL
   'prio':                'prioridad',
   'prioridad':           'prioridad',
   'fech rev':            'fech_rev',
@@ -58,6 +59,9 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
 
   const [sheetsData, setSheetsData] = useState({ backlog: [] as any[], sprints: [] as any[], obs: [] as any[] })
   const [activeTab, setActiveTab] = useState<'backlog' | 'sprints' | 'obs'>('backlog')
+  
+  // Guardará las columnas dinámicas (tecnologías) encontradas en el Excel
+  const [dynamicCols, setDynamicCols] = useState<string[]>([])
 
   function handleFile(file: File) {
     setError('')
@@ -72,13 +76,15 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
         const sprintsName = workbook.SheetNames.find(n => /sprint/i.test(n))
         const obsName     = workbook.SheetNames.find(n => /observacion/i.test(n) || /obs/i.test(n))
 
+        const foundDynamicCols = new Set<string>()
+
         const parseSheet = (sheetName: string | undefined) => {
           if (!sheetName) return []
           const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], { defval: '' })
+          
           return raw.map(r => {
             const mapped: any = { codigo: '', descripcion: '' }
-            techCols.forEach(c => { mapped[c.col_key] = '' })
-
+            
             Object.entries(r).forEach(([key, val]) => {
               const k = key.toLowerCase().trim()
               let strVal = val instanceof Date ? val.toISOString().split('T')[0] : (val !== null && val !== undefined ? String(val).trim() : '')
@@ -106,10 +112,12 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
               } else if (mappedKey) {
                 mapped[mappedKey] = strVal
               } else {
-                const techCol = techCols.find(c =>
-                  c.name.toLowerCase() === k || c.col_key.toLowerCase() === k || c.col_key.toLowerCase() === k.replace(/[\s.]+/g, '_')
-                )
-                if (techCol) mapped[techCol.col_key] = strVal
+                // Si no es una columna base, la guardamos (ignorando la basura de Excel)
+                const cleanOriginalKey = key.trim()
+                if (!cleanOriginalKey.toUpperCase().includes('__EMPTY') && cleanOriginalKey !== '') {
+                  mapped[cleanOriginalKey] = strVal
+                  foundDynamicCols.add(cleanOriginalKey)
+                }
               }
             })
             return mapped
@@ -124,6 +132,9 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
           setError('El archivo está vacío o no contiene hojas reconocibles (Backlog, Sprints, Observaciones).')
           return
         }
+
+        // Guardamos las cabeceras dinámicas encontradas para dibujarlas en la tabla
+        setDynamicCols(Array.from(foundDynamicCols))
 
         setSheetsData({ backlog: parsedBacklog, sprints: parsedSprints, obs: parsedObs })
         setActiveTab(parsedBacklog.length > 0 ? 'backlog' : (parsedSprints.length > 0 ? 'sprints' : 'obs'))
@@ -164,7 +175,7 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col relative overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col relative overflow-hidden">
 
         {/* PANTALLA DE CARGA (OVERLAY) */}
         {importing && (
@@ -206,9 +217,8 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
               <div className="flex items-start gap-3 p-3 bg-blue-50 rounded text-sm text-blue-700">
                 <span className="mt-0.5">💡</span>
                 <div>
-                  <p className="font-medium mb-1">Nuevas capacidades de importación</p>
-                  <p>Ahora puedes subir el Excel completo. El sistema detectará automáticamente las hojas <strong>Backlog</strong>, <strong>Backlog-Sprints</strong> y <strong>Observaciones</strong>.</p>
-                  <p className="mt-1">Los ítems con un avance del <strong>100%</strong> serán marcados automáticamente como Completados.</p>
+                  <p className="font-medium mb-1">Detección automática de Tecnologías</p>
+                  <p>Ahora cualquier columna que no sea estándar (como "codigo" o "estado") será detectada y **creada automáticamente** como una nueva tecnología/responsable.</p>
                 </div>
               </div>
 
@@ -254,7 +264,7 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
 
               <div className="overflow-x-auto border rounded max-h-96">
                 <table className="min-w-full text-xs">
-                  <thead className="bg-gray-50 border-b sticky top-0">
+                  <thead className="bg-gray-50 border-b sticky top-0 z-10">
                     <tr>
                       <th className="px-2 py-2 text-left font-medium text-gray-600">#</th>
                       <th className="px-2 py-2 text-left font-medium text-gray-600">Código</th>
@@ -277,6 +287,14 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
                         </>
                       )}
                       {activeTab === 'obs' && <th className="px-2 py-2 text-left font-medium text-gray-600">Estado</th>}
+                      
+                      {/* 👇 PINTAMOS LAS COLUMNAS DINÁMICAS (TECNOLOGÍAS) EN AZUL 👇 */}
+                      {dynamicCols.map(col => (
+                        <th key={col} className="px-2 py-2 text-left font-medium text-blue-600 whitespace-nowrap bg-blue-50/50">
+                          {col}
+                        </th>
+                      ))}
+
                       <th className="px-2 py-2 text-left font-medium text-gray-600">Fec. Reg</th>
                     </tr>
                   </thead>
@@ -304,6 +322,14 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
                           </>
                         )}
                         {activeTab === 'obs' && <td className="px-2 py-1.5 text-gray-600">{row.estado}</td>}
+
+                        {/* 👇 PINTAMOS LOS VALORES DE LAS COLUMNAS DINÁMICAS 👇 */}
+                        {dynamicCols.map(col => (
+                          <td key={col} className="px-2 py-1.5 text-gray-700 font-medium whitespace-nowrap bg-blue-50/10">
+                            {row[col] || <span className="text-gray-300">—</span>}
+                          </td>
+                        ))}
+
                         <td className="px-2 py-1.5 text-gray-600">{row.fech_reg}</td>
                       </tr>
                     ))}
@@ -322,6 +348,9 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
                   <li className="text-blue-700">📋 Backlog: {result.backlogCreated} creados, {result.backlogUpdated} actualizados</li>
                   {(result.obsCreated > 0 || result.obsUpdated > 0) && (
                     <li className="text-orange-700">🔍 Observaciones: {result.obsCreated} creadas, {result.obsUpdated} actualizadas</li>
+                  )}
+                  {dynamicCols.length > 0 && (
+                    <li className="text-teal-700">✨ {dynamicCols.length} Columnas tecnológicas detectadas / procesadas</li>
                   )}
                 </ul>
                 {result.errors.length > 0 && <p className="text-yellow-700 mt-4 font-bold">⚠ {result.errors.length} fila(s) con advertencias/errores</p>}

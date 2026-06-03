@@ -69,6 +69,58 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     const errors: string[] = []
     const results = { sprints: 0, bCreated: 0, bUpdated: 0, oCreated: 0, oUpdated: 0 }
 
+    // ── FASE 0: DETECTAR Y CREAR COLUMNAS TECNOLÓGICAS FALTANTES ──
+    const standardCols = new Set([
+      'codigo', 'modulo', 'descripcion', 'avance', 'estado', 'sprint', 'eta',
+      'fech_reg', 'reg_date', 'regdate', 'fech reg', 'comentario', 'comentarios',
+      'prioridad', 'fech_rev', 'descripcion_general', 'ticket_relacionado', 'tipo'
+    ]);
+
+    const allHeaders = new Set<string>();
+    
+    // Extraemos todas las cabeceras dinámicas del Excel
+    const extractHeaders = (rows: Record<string, any>[]) => {
+      rows.forEach(row => {
+        Object.keys(row).forEach(header => {
+          const cleanHeader = header.toLowerCase().trim();
+          if (cleanHeader && !standardCols.has(cleanHeader)) {
+            allHeaders.add(header.trim());
+          }
+        });
+      });
+    };
+
+    extractHeaders(backlogRows);
+    extractHeaders(obsRows);
+
+    let techCols = await query<ColRow>(
+      `SELECT id, name, col_key FROM project_columns WHERE project_id = ? AND deleted_at IS NULL AND active = 1`, [projectId]
+    );
+    
+    const existingColKeys = new Set(techCols.map(c => c.col_key.toLowerCase()));
+    const existingColNames = new Set(techCols.map(c => c.name.toLowerCase()));
+
+    // Creamos las columnas que no existan en la BD
+    for (const header of Array.from(allHeaders)) {
+      const headerKey = header.toLowerCase().replace(/[\s.]+/g, '_');
+      if (!existingColKeys.has(headerKey) && !existingColNames.has(header.toLowerCase())) {
+        try {
+          await query(
+            `INSERT INTO project_columns (project_id, name, col_key, col_type, sort_order, active, created_by, created_at)
+             VALUES (?, ?, ?, 'both', 99, 1, ?, NOW())`,
+             [projectId, header, headerKey, ctx.userId]
+          );
+        } catch (e: any) {
+          errors.push(`No se pudo crear columna automática ${header}: ${e.message}`);
+        }
+      }
+    }
+
+    // Recargamos las columnas para usarlas en el resto del código
+    techCols = await query<ColRow>(
+      `SELECT id, name, col_key FROM project_columns WHERE project_id = ? AND deleted_at IS NULL AND active = 1`, [projectId]
+    );
+
     // ── FASE 1: CREAR SPRINTS FALTANTES ──
     const allSprintNums = new Set(
       [...backlogRows, ...sprintRows]
@@ -99,10 +151,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     }
 
     // ── FASE 2: PROCESAR BACKLOG PRINCIPAL ──
-    const techCols = await query<ColRow>(
-      `SELECT id, name, col_key FROM project_columns WHERE project_id = ? AND deleted_at IS NULL AND active = 1`, [projectId]
-    )
-    
     const existingItems = await query<ExistingItem>(
       `SELECT id, code FROM backlog_items WHERE project_id = ? AND deleted_at IS NULL`, [projectId]
     )
@@ -202,14 +250,18 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         const priority = row.prioridad ? Number(row.prioridad) : 0
         const reviewDate = row.fech_rev ? String(row.fech_rev).trim().substring(0, 10) : null
         const sprintNum = (row.sprint !== undefined && row.sprint !== null && String(row.sprint).trim() !== '') ? Number(row.sprint) : null;
+        
+        // Obtenemos el comentario directamente de la pestaña Sprints
+        const sprintComment = row.comentario ? String(row.comentario).trim() : null;
 
         await query(
           `UPDATE backlog_items 
            SET priority = COALESCE(?, priority), 
                review_date = COALESCE(?, review_date), 
-               sprint_num = COALESCE(?, sprint_num) 
+               sprint_num = COALESCE(?, sprint_num),
+               comment = ? 
            WHERE id = ?`,
-          [isNaN(priority) ? 0 : priority, reviewDate, sprintNum, itemId]
+          [isNaN(priority) ? 0 : priority, reviewDate, sprintNum, sprintComment, itemId]
         )
       } catch (err: any) {
         errors.push(`Sprints ${row.codigo}: Error actualizando datos extras (${err.message})`)
@@ -218,19 +270,18 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
 
     // ── FASE 4: PROCESAR OBSERVACIONES (FILTRADO, RE-MAPEO Y ASIGNACIÓN DE RESPONSABLES) ──
     for (const row of obsRows) {
-      // 1. Extraemos las columnas exactas del Excel
+      // Extraemos las columnas exactas del Excel
       const rawExcelDescGen = row.descripcion_general || row.descripcion || row['descripción general'] || row['DESCRIPCION GENERAL'] || '';
       const rawExcelComentarios = row.comentario || row.comentarios || row['comentarios'] || row['COMENTARIO'] || '';
       const ticketRel = row.ticket_relacionado ? String(row.ticket_relacionado).trim() : '';
       
-      // 🚀 REQUERIMIENTO 1: Descartar filas vacías o fantasma
+      // Descartar filas vacías
       if (!rawExcelDescGen && !rawExcelComentarios && !ticketRel) continue;
 
-      // 🚀 REQUERIMIENTO 2: Re-mapeo (Título <- Desc General | Descripción <- Comentarios)
+      // Re-mapeo: Título <- Desc General | Descripción <- Comentarios
       const titleText = String(rawExcelDescGen).trim() || 'Sin título';
       const descText = String(rawExcelComentarios).trim() || 'Sin descripción';
 
-      // 🚀 REQUERIMIENTO 3: Relación con el Ticket del Backlog
       const relatedCode = ticketRel.toLowerCase();
       const itemId = relatedCode ? existingMap.get(relatedCode) || null : null;
 
@@ -260,8 +311,8 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         let currentObsId = 0;
         
         existObs = await query<ExistingItem>(
-          `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? AND descripcion = ? LIMIT 1`, 
-          [projectId, titleText, descText]
+          `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? LIMIT 1`, 
+          [projectId, titleText]
         )
         
         if (existObs.length > 0) {
@@ -274,7 +325,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           )
           results.oUpdated++
         } else {
-          await query(
+          const insertRes: any = await query(
             `INSERT INTO observaciones 
              (tenant_id, project_id, backlog_item_id, tipo, prioridad, titulo, descripcion, estado, eta, created_by, created_at) 
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -282,38 +333,43 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           )
           results.oCreated++
           
-          const newObs = await query<ExistingItem>(
-            `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? AND descripcion = ? ORDER BY id DESC LIMIT 1`, 
-            [projectId, titleText, descText]
-          )
-          if (newObs.length > 0) currentObsId = newObs[0].id;
+          currentObsId = insertRes?.insertId || 0;
+          
+          if (!currentObsId) {
+            const newObs = await query<ExistingItem>(
+              `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? ORDER BY id DESC LIMIT 1`, 
+              [projectId, titleText]
+            )
+            if (newObs.length > 0) currentObsId = newObs[0].id;
+          }
         }
 
         // 🚀 ASIGNACIÓN DE RESPONSABLES (Tabla observacion_asignaciones)
         if (currentObsId) {
-          // 1. Limpiamos las asignaciones anteriores para evitar duplicados si re-importas el excel
           try {
             await query(`DELETE FROM observacion_asignaciones WHERE observacion_id = ?`, [currentObsId]);
           } catch (e) {}
 
-          // 2. Insertamos a los responsables detectados en las columnas del Excel
+          const excelHeaders = Object.keys(row);
+
           for (const col of techCols) {
-            const colNameNorm = col.name.toLowerCase().replace(/[\s.]+/g, '_')
-            const val = row[col.col_key] ?? row[colNameNorm] ?? row[col.name.toLowerCase()] ?? row[col.name] ?? null
+            const matchedHeader = excelHeaders.find(header => 
+              header.trim().toLowerCase() === col.name.trim().toLowerCase() ||
+              header.trim().toLowerCase().replace(/[\s.]+/g, '_') === col.col_key.trim().toLowerCase()
+            );
+
+            const val = matchedHeader ? row[matchedHeader] : null;
             
             if (!val || String(val).trim() === '') continue;
             
             try {
-              // Inserción directa respetando estrictamente tu esquema
               await query(
                 `INSERT INTO observacion_asignaciones 
                  (tenant_id, observacion_id, column_id, col_key, tech_name, developer_name, created_at) 
                  VALUES (?, ?, ?, ?, ?, ?, NOW())`,
                 [ctx.tenantId, currentObsId, col.id, col.col_key, col.name, String(val).trim()]
               )
-            } catch (assignErr: any) {
-              // Silenciado intencionalmente para no frenar la importación masiva por una columna
-            }
+            } catch (assignErr: any) {}
           }
         }
 

@@ -49,7 +49,8 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [activeSprint, setActiveSprint]     = useState<Sprint | null>(null)
   const [items, setItems]                   = useState<SprintItem[]>([])
   const [techCols, setTechCols]             = useState<TechCol[]>([])
-  const [loading, setLoading]               = useState(false)
+ const [loading, setLoading]               = useState(false)
+  const [isPageLoading, setIsPageLoading]   = useState(true)
   const [fetchError, setFetchError]         = useState('')
   const [statusFilters, setStatusFilters]   = useState<string[]>([])
   const [showSprintForm, setShowSprintForm] = useState(false)
@@ -120,9 +121,11 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
   useEffect(() => {
     async function loadAll() {
+      setIsPageLoading(true)
       await fetchTechCols()
       const active = await fetchSprints()
       await fetchItems(active)
+      setIsPageLoading(false)
     }
     loadAll()
   }, [projectId, tenant])
@@ -143,8 +146,22 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
     )
   }
 
-  const today = new Date()
+ const today = new Date()
   today.setHours(0, 0, 0, 0)
+
+  if (isPageLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 space-y-4 bg-white rounded-lg shadow border border-gray-100">
+        <div className="relative w-12 h-12">
+          <div className="absolute inset-0 rounded-full border-4 border-gray-100"></div>
+          <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
+        </div>
+        <p className="text-sm font-medium text-gray-500 uppercase tracking-widest">
+          Cargando datos del sprint...
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
