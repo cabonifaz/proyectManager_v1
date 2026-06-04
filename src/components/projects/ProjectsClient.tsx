@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import type { Role } from '@/lib/rbac'
 
 interface Project {
@@ -39,6 +40,7 @@ function generateCode(name: string): string {
 export function ProjectsClient({ tenant, role, userId }: {
   tenant: string; role: Role; userId: number
 }) {
+  const router = useRouter() // 🚀 Agregado para redirección
   const [projects, setProjects]     = useState<Project[]>([])
   const [filtered, setFiltered]     = useState<Project[]>([])
   const [loading, setLoading]       = useState(true)
@@ -54,7 +56,6 @@ export function ProjectsClient({ tenant, role, userId }: {
   const canCreate    = isSuperAdmin
   const canDelete    = isSuperAdmin
 
-  // Lógica corregida: Solo super_admin o gestor_proyecto que sea miembro (is_member === 1)
   function canEditProject(p: Project): boolean {
     if (isSuperAdmin) return true
     if (isGestor && p.is_member === 1) return true
@@ -103,10 +104,17 @@ export function ProjectsClient({ tenant, role, userId }: {
       const res  = await fetch(`/api/${tenant}/projects/${id}`, { method: 'DELETE' })
       const json = await res.json()
       if (!res.ok) { alert(`Error al eliminar: ${json.error ?? res.status}`); return }
-      fetchProjects()
+      
+      // 🚀 MAGIA AQUÍ: Filtramos la tarjeta eliminada del estado inmediatamente
+      setProjects(prev => prev.filter(p => p.id !== id))
     } catch (e) {
       alert(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
     }
+  }
+
+  // 🚀 Función para redirección programática
+  function handleGoToBacklog(projectId: number) {
+    router.push(`/${tenant}/backlog?projectId=${projectId}`)
   }
 
   return (
@@ -180,9 +188,9 @@ export function ProjectsClient({ tenant, role, userId }: {
             <ProjectCard
               key={p.id}
               project={p}
-              tenant={tenant}
               canEdit={canEditProject(p)}
               canDelete={canDelete}
+              onGoToBacklog={() => handleGoToBacklog(p.id)} // 🚀 Enviamos la función de ruta
               onEdit={() => { setEditItem(p); setShowForm(true) }}
               onDelete={() => handleDelete(p.id)}
             />
@@ -238,8 +246,8 @@ export function ProjectsClient({ tenant, role, userId }: {
                       {/* Botones restringidos en modo lista */}
                       {canEditProject(p) && (
                         <>
-                          <a href={`/${tenant}/backlog?projectId=${p.id}`}
-                            className="text-xs text-blue-600 hover:underline">Backlog</a>
+                          <button onClick={() => handleGoToBacklog(p.id)} // 🚀 Cambiado a botón navegable
+                            className="text-xs text-blue-600 hover:underline">Backlog</button>
                           <button
                             onClick={() => { setEditItem(p); setShowForm(true) }}
                             className="text-xs text-gray-600 hover:underline"
@@ -277,11 +285,11 @@ export function ProjectsClient({ tenant, role, userId }: {
   )
 }
 
-function ProjectCard({ project: p, tenant, canEdit, canDelete, onEdit, onDelete }: {
+function ProjectCard({ project: p, canEdit, canDelete, onGoToBacklog, onEdit, onDelete }: {
   project: Project
-  tenant: string
   canEdit: boolean
   canDelete: boolean
+  onGoToBacklog: () => void // 🚀 Nuevo prop
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -329,8 +337,8 @@ function ProjectCard({ project: p, tenant, canEdit, canDelete, onEdit, onDelete 
         {/* Botones restringidos en modo card */}
         {canEdit && (
           <>
-            <a href={`/${tenant}/backlog?projectId=${p.id}`}
-              className="text-xs text-blue-600 hover:underline">Ver backlog</a>
+            <button onClick={onGoToBacklog} // 🚀 Cambiado a botón de navegación
+              className="text-xs text-blue-600 font-medium hover:underline">Ver backlog</button>
             <button onClick={onEdit} className="text-xs text-gray-600 hover:underline">Editar</button>
           </>
         )}

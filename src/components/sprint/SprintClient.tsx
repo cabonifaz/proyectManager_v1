@@ -134,6 +134,9 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
   const completedItems = items.filter(i => i.status === 'completado').length
   const pct = items.length > 0 ? Math.round(completedItems / items.length * 100) : 0
+  // 🚀 NUEVO: Cálculo del Avance Real (Promedio de la columna progress)
+  const totalProgress = items.reduce((sum, item) => sum + (Number(item.progress) || 0), 0)
+  const realPct = items.length > 0 ? Math.round(totalProgress / items.length) : 0
   
   const pendingItems = items.filter(i => i.status === 'pendiente').length
   const inProgressItems = items.filter(i => i.status === 'en_progreso').length
@@ -246,12 +249,31 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
               </div>
 
             </div>
-            <div className="text-right min-w-32">
-              <p className="text-4xl font-bold text-blue-600">{pct}%</p>
-              <p className="text-xs text-gray-400 mt-1">{completedItems}/{items.length} completados</p>
-              <div className="w-32 bg-gray-200 rounded-full h-2 mt-2 ml-auto">
-                <div className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${pct}%` }} />
+            <div className="text-right min-w-40 flex flex-col gap-4 border-l pl-5 border-gray-100">
+              {/* Métrica 1: Avance Real (El esfuerzo total) */}
+              <div>
+                <div className="flex justify-between items-end mb-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Avance Real</span>
+                  <span className="text-2xl font-bold text-green-600">{realPct}%</span>
+                </div>
+                <div className="w-36 bg-gray-100 rounded-full h-1.5 ml-auto">
+                  <div className="bg-green-500 h-1.5 rounded-full transition-all duration-700" 
+                    style={{ width: `${realPct}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">Promedio de progreso</p>
+              </div>
+
+              {/* Métrica 2: Tickets Completados (Lo que está al 100%) */}
+              <div>
+                <div className="flex justify-between items-end mb-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cerrados</span>
+                  <span className="text-xl font-bold text-blue-600">{pct}%</span>
+                </div>
+                <div className="w-36 bg-gray-100 rounded-full h-1.5 ml-auto">
+                  <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-700" 
+                    style={{ width: `${pct}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">{completedItems} de {items.length} tickets</p>
               </div>
             </div>
           </div>

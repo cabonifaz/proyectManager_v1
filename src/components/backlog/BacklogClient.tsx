@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import * as XLSX from 'xlsx'
 import { ImportModal } from './ImportModal'
+import { useImport } from '@/lib/ImportContext' // 👇 Importación del Contexto Global
 import type { Role } from '@/lib/rbac'
 
 interface Project { id: number; code: string; name: string; is_member?: number }
@@ -12,8 +14,8 @@ interface BacklogItem {
   progress: number; status: string; sprint_num: number | string | null
   eta: string | null; reg_date: string; comment: string
   tech_columns: TechVal[]
-  priority?: number;            // <-- Añadido
-  review_date?: string | null;  // <-- Añadido
+  priority?: number;            
+  review_date?: string | null;  
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -27,11 +29,18 @@ const STATUS_COLORS: Record<string, string> = {
 export function BacklogClient({ projects, tenant, role }: {
   projects: Project[]; tenant: string; role: Role
 }) {
+  const searchParams = useSearchParams()
+  const urlProjectId = searchParams.get('projectId')
+
   const allowedProjects = projects.filter(p => 
     role === 'super_admin' || Number(p.is_member) > 0
   )
 
-  const [projectId, setProjectId]         = useState<number | null>(allowedProjects[0]?.id ?? null)
+  const initialProjectId = urlProjectId 
+    ? allowedProjects.find(p => p.id === Number(urlProjectId))?.id ?? allowedProjects[0]?.id
+    : allowedProjects[0]?.id;
+
+  const [projectId, setProjectId]         = useState<number | null>(initialProjectId ?? null)
   const [items, setItems]                 = useState<BacklogItem[]>([])
   const [techCols, setTechCols]           = useState<TechCol[]>([])
   const [loading, setLoading]             = useState(false)
@@ -45,8 +54,11 @@ export function BacklogClient({ projects, tenant, role }: {
   const [showColConfig, setShowColConfig] = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [viewComment, setViewComment]     = useState<{ code: string; comment: string } | null>(null)
-  
-  // 👇 NUEVOS ESTADOS PARA EL MODAL DE ELIMINACIÓN 👇
+
+  // 👇 Hook del Contexto Global para la importación en segundo plano
+  const { startBackgroundImport } = useImport()
+
+  // ESTADOS PARA EL MODAL DE ELIMINACIÓN
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [itemToDelete, setItemToDelete]           = useState<number | null>(null)
 
@@ -55,13 +67,12 @@ export function BacklogClient({ projects, tenant, role }: {
   const canDelete     = ['super_admin','gestor_proyecto'].includes(role)
   const canManageCols = ['super_admin','gestor_proyecto'].includes(role)
 
-const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
+  const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
     if (!projectId) return []
     try {
       const res  = await fetch(`/api/${tenant}/projects/${projectId}/columns`)
       const json = await res.json()
       
-      // 👇 Se agrega el filtro para ocultar las columnas que son "solo sprint"
       const cols: TechCol[] = (json.data ?? []).filter((c: TechCol) => 
         ['backlog', 'both'].includes(c.col_type)
       )
@@ -120,7 +131,6 @@ const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
     if (projectId) fetchItems()
   }, [statusFilter, sprintFilter, search])
 
-  // 👇 FUNCIÓN ACTUALIZADA PARA CONFIRMAR ELIMINACIÓN 👇
   async function confirmDelete() {
     if (!itemToDelete) return
     try {
@@ -314,8 +324,7 @@ const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Avance</th>
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Sprint</th>
-              <th className="px-3 py-3 text-left font-medium text-orange-600 whitespace-nowrap">Prio</th>
-              <th className="px-3 py-3 text-left font-medium text-orange-600 whitespace-nowrap">Fec. Rev</th>
+              
               <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">ETA</th>
               {techCols.map(c => (
                 <th key={c.col_key} className="px-3 py-3 text-left font-medium text-blue-600 whitespace-nowrap">
@@ -356,8 +365,7 @@ const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
                   </span>
                 </td>
                 <td className="px-3 py-2 text-center text-gray-500 whitespace-nowrap font-medium">{item.sprint_num ?? '—'}</td>
-                <td className="px-3 py-2 text-center text-gray-600 whitespace-nowrap font-medium">{item.priority ?? 0}</td>
-                <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{item.review_date ? item.review_date.toString().slice(0, 10) : '—'}</td>
+
                 <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{item.eta ? item.eta.toString().slice(0, 10) : '—'}</td>
                 {techCols.map(col => {
                   const val = item.tech_columns?.find(t => t.col_key === col.col_key)
@@ -386,7 +394,6 @@ const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
                       </button>
                     )}
                     {canDelete && (
-                      // 👇 SE ACTUALIZÓ ESTE BOTÓN PARA ABRIR EL MODAL 👇
                       <button
                         onClick={() => { setItemToDelete(item.id); setIsDeleteModalOpen(true); }}
                         className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase transition-colors"
@@ -429,7 +436,11 @@ const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
           projectId={projectId}
           techCols={techCols}
           onClose={() => setShowImport(false)}
-          onImported={() => fetchItems()}
+          onStartImport={(payload) => {
+            setShowImport(false);
+            // 👇 Disparamos el hook global y recargamos la tabla al finalizar
+            startBackgroundImport(tenant, payload, () => fetchItems());
+          }}
         />
       )}
 
@@ -453,7 +464,7 @@ const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
         </div>
       )}
 
-      {/* 👇 NUEVO MODAL DE ELIMINACIÓN 👇 */}
+      {/* MODAL DE ELIMINACIÓN */}
       {isDeleteModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
@@ -502,8 +513,7 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     sprint_num:  item?.sprint_num  ?? '',
     eta:         item?.eta ? item.eta.toString().slice(0, 10) : '',
     comment:     item?.comment     ?? '',
-    priority:    item?.priority    ?? 0, 
-    review_date: item?.review_date ? item.review_date.toString().slice(0, 10) : '', 
+
   })
 
   const [techVals, setTechVals] = useState<Record<string, string>>(() => {
@@ -541,8 +551,7 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           sprintNum:   form.sprint_num  || null,
           eta:         form.eta         || null,
           comment:     form.comment     || null,
-          priority:    Number(form.priority), 
-          reviewDate:  form.review_date || null, 
+         
         }),
       })
 
@@ -647,18 +656,7 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Prioridad (0-10)</label>
-              <input type="number" min="0" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                value={form.priority} onChange={e => setForm(f => ({ ...f, priority: Number(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Fecha de Revisión</label>
-              <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600"
-                value={form.review_date} onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))} />
-            </div>
-          </div>
+          
 
           {techCols.length > 0 && (
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">

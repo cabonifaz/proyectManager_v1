@@ -31,11 +31,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
 
     if (result.p_error) return NextResponse.json({ error: result.p_error }, { status: 400 })
 
-    // 2. Guardar Prioridad y Fecha de Revisión en la tabla correcta: BACKLOG_ITEMS
-    if (body.priority !== undefined || body.reviewDate !== undefined) {
+    // 2. Guardar Prioridad y Fecha de Revisión en la tabla correcta: SPRINT_ITEMS
+    if (body.sprintNum && (body.priority !== undefined || body.reviewDate !== undefined)) {
       await query(
-        `UPDATE backlog_items SET priority = ?, review_date = ? WHERE id = ?`,
-        [body.priority ?? 0, body.reviewDate || null, id]
+        `UPDATE sprint_items 
+         SET priority = ?, review_date = ?, updated_by = ?, updated_at = NOW() 
+         WHERE backlog_item_id = ? AND sprint_num = ? AND deleted_at IS NULL`,
+        [body.priority ?? 0, body.reviewDate || null, ctx.userId, id, body.sprintNum]
       )
     }
 

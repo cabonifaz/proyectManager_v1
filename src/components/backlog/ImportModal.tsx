@@ -9,51 +9,66 @@ interface Props {
   projectId: number
   techCols: TechCol[]
   onClose: () => void
-  onImported: () => void
-}
-
-interface ImportResult {
-  backlogCreated: number
-  backlogUpdated: number
-  sprintsCreated: number
-  obsCreated: number
-  obsUpdated: number
-  errors: string[]
+  // 👇 Cambiado para mandar la data al padre y procesar en segundo plano
+  onStartImport: (payload: any) => void 
 }
 
 const BASE_HEADERS: Record<string, string> = {
-  'codigo':              'codigo',
-  'code':                'codigo',
-  'módulo':              'modulo',
-  'modulo':              'modulo',
-  'module':              'modulo',
+  // Código
+  'codigo': 'codigo',
+  'cod': 'codigo',
+  
+  // Módulo
+  'modulo': 'modulo',
+  'módulo': 'modulo',
+  'module': 'modulo',
+  
+  // Descripción
+  'descripcion': 'descripcion',
+  'descripción': 'descripcion',
+  'descripcion general': 'descripcion',
   'descripción general': 'descripcion',
-  'descripción':         'descripcion',
-  'descripcion':         'descripcion',
-  'avance':              'avance',
-  'progress':            'avance',
-  '%':                   'avance',
-  'estado':              'estado',
-  'status':              'estado',
-  'sprint':              'sprint',
-  'fech reg':            'fech_reg',
-  'fecha reg':           'fech_reg',
-  'eta':                 'eta',
-  'comentario':          'comentario',
-  'comentarios':         'comentario', // 👇 AQUÍ ESTÁ EL AJUSTE PARA EL PLURAL
-  'prio':                'prioridad',
-  'prioridad':           'prioridad',
-  'fech rev':            'fech_rev',
-  'fecha rev':           'fech_rev',
-  'ticket relacionado':  'ticket_relacionado',
-  'tipo':                'tipo'
+  
+  // Avance
+  'avance': 'avance',
+  'progress': 'avance',
+  '%': 'avance',
+  
+  // Estado
+  'estado': 'estado',
+  'status': 'estado',
+  
+  // Sprint
+  'sprint': 'sprint',
+  'sprin': 'sprint', // Esto arregla el error de "SPRIN"
+  
+  // Fechas y ETA
+  'fech reg': 'fech_reg',
+  'fecha reg': 'fech_reg',
+  'fech rec': 'fech_reg', // Ajuste para "FECH REC" que vi en tu captura
+  'eta': 'eta',
+  
+  // Comentarios
+  'comentario': 'comentario',
+  'comentarios': 'comentario',
+  
+  // Prioridad
+  'prio': 'prioridad',      // Esto arregla el error de "PRIO"
+  'prioridad': 'prioridad',
+  
+  // Fechas Revisión
+  'fech rev': 'fech_rev',   // Esto arregla el error de "FECH REV"
+  'fecha rev': 'fech_rev',
+  
+  // Otros
+  'ticket relacionado': 'ticket_relacionado',
+  'ticket': 'ticket_relacionado',
+  'tipo': 'tipo'
 }
 
-export function ImportModal({ tenant, projectId, techCols, onClose, onImported }: Props) {
-  const [step, setStep]           = useState<'upload' | 'preview' | 'result'>('upload')
+export function ImportModal({ tenant, projectId, techCols, onClose, onStartImport }: Props) {
+  const [step, setStep]           = useState<'upload' | 'preview'>('upload')
   const [fileName, setFileName]   = useState('')
-  const [importing, setImporting] = useState(false)
-  const [result, setResult]       = useState<ImportResult | null>(null)
   const [error, setError]         = useState('')
   const inputRef                  = useRef<HTMLInputElement>(null)
 
@@ -146,29 +161,14 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
     reader.readAsArrayBuffer(file)
   }
 
-  async function handleImport() {
-    setImporting(true)
-    setError('')
-    try {
-      const res = await fetch(`/api/${tenant}/backlog/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          projectId, 
-          backlogRows: sheetsData.backlog,
-          sprintRows: sheetsData.sprints,
-          obsRows: sheetsData.obs
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) { setError(`Error ${res.status}: ${json.error}`); setImporting(false); return }
-      setResult(json)
-      setStep('result')
-    } catch (e) {
-      setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
-    } finally {
-      setImporting(false)
-    }
+  function handleImport() {
+    // 👇 Le pasamos toda la data al componente padre para que lo suba en segundo plano
+    onStartImport({
+      projectId, 
+      backlogRows: sheetsData.backlog,
+      sprintRows: sheetsData.sprints,
+      obsRows: sheetsData.obs
+    })
   }
 
   const totalRows = sheetsData.backlog.length + sheetsData.sprints.length + sheetsData.obs.length
@@ -177,29 +177,10 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col relative overflow-hidden">
 
-        {/* PANTALLA DE CARGA (OVERLAY) */}
-        {importing && (
-          <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
-            <div className="relative w-20 h-20 mb-6">
-              <div className="absolute inset-0 rounded-full border-4 border-gray-200"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
-            </div>
-            <h2 className="text-2xl font-black text-gray-800 tracking-tight">Procesando archivo Excel...</h2>
-            <div className="mt-3 text-center text-gray-500 space-y-1">
-              <p>Analizando {totalRows} filas en total.</p>
-              <p>Se están creando los sprints, vinculando las observaciones y actualizando el backlog.</p>
-            </div>
-            <div className="mt-8 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2 animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-              Por favor, no cierre esta ventana
-            </div>
-          </div>
-        )}
-
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Importar datos múltiples (Excel)</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl" disabled={importing}>×</button>
+          <h2 className="text-lg font-semibold">Preparar Importación (Paso previo)</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
         </div>
 
         {/* Indicador de pasos */}
@@ -207,8 +188,6 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
           <span className={step === 'upload'  ? 'text-blue-600 font-medium' : ''}>1. Subir archivo</span>
           <span>→</span>
           <span className={step === 'preview' ? 'text-blue-600 font-medium' : ''}>2. Vista previa Multi-hoja</span>
-          <span>→</span>
-          <span className={step === 'result'  ? 'text-blue-600 font-medium' : ''}>3. Resultado</span>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -338,48 +317,18 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onImported }
               </div>
             </div>
           )}
-
-          {step === 'result' && result && (
-            <div className="space-y-4">
-              <div className={`p-5 rounded-lg border ${result.errors.length === 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-                <h3 className="font-bold text-gray-800 mb-3 border-b border-gray-200 pb-2">Resumen de Importación</h3>
-                <ul className="space-y-1.5 text-sm">
-                  {result.sprintsCreated > 0 && <li className="text-purple-700">⏱️ {result.sprintsCreated} nuevos Sprints creados</li>}
-                  <li className="text-blue-700">📋 Backlog: {result.backlogCreated} creados, {result.backlogUpdated} actualizados</li>
-                  {(result.obsCreated > 0 || result.obsUpdated > 0) && (
-                    <li className="text-orange-700">🔍 Observaciones: {result.obsCreated} creadas, {result.obsUpdated} actualizadas</li>
-                  )}
-                  {dynamicCols.length > 0 && (
-                    <li className="text-teal-700">✨ {dynamicCols.length} Columnas tecnológicas detectadas / procesadas</li>
-                  )}
-                </ul>
-                {result.errors.length > 0 && <p className="text-yellow-700 mt-4 font-bold">⚠ {result.errors.length} fila(s) con advertencias/errores</p>}
-              </div>
-              {result.errors.length > 0 && (
-                <div className="border rounded p-3 space-y-1 max-h-48 overflow-y-auto">
-                  <p className="text-xs font-medium text-gray-500 mb-2">Detalle de registro:</p>
-                  {result.errors.map((e, i) => <p key={i} className="text-xs text-red-600">• {e}</p>)}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t flex justify-end gap-2">
-          {step === 'upload' && <button onClick={onClose} disabled={importing} className="px-4 py-2 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">Cancelar</button>}
+          {step === 'upload' && <button onClick={onClose} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Cancelar</button>}
           {step === 'preview' && (
             <>
-              <button onClick={() => setStep('upload')} disabled={importing} className="px-4 py-2 text-sm border rounded hover:bg-gray-50 disabled:opacity-50">Atrás</button>
-              <button onClick={handleImport} disabled={importing} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
-                {importing ? 'Procesando Data...' : `Importar Todo`}
+              <button onClick={() => setStep('upload')} className="px-4 py-2 text-sm border rounded hover:bg-gray-50">Atrás</button>
+              <button onClick={handleImport} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 font-bold shadow-sm">
+                Procesar en segundo plano 
               </button>
             </>
-          )}
-          {step === 'result' && (
-            <button onClick={() => { onImported(); onClose() }} className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
-              Cerrar y actualizar
-            </button>
           )}
         </div>
       </div>
