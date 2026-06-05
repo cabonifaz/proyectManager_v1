@@ -46,13 +46,15 @@ export async function POST(req: NextRequest) {
         p_project_id:      body.projectId,
         p_backlog_item_id: body.backlogItemId ?? null,
         p_tipo:            body.tipo,
-        p_prioridad:       body.prioridad    ?? 'media',
+        p_prioridad:       body.prioridad     ?? 'media',
         p_titulo:          body.titulo,
-        p_descripcion:     body.descripcion  ?? null,
-        p_eta:             body.eta          ?? null,
-        p_created_by:      ctx.userId,
+        p_descripcion:     body.descripcion   ?? null,
+        p_eta:             body.eta           ?? null,
+        p_estado:          body.estado        ?? 'abierta', // 🚀 Dato 9
+        p_entregado_at:    body.entregadoAt   ?? null,      // 🚀 Dato 10
+        p_created_by:      ctx.userId,                      // 🚀 Dato 11
       },
-      ['p_new_id', 'p_error'],
+      ['p_new_id', 'p_error'],                              // 🚀 Datos 12 y 13 (Salida)
     )
 
     if (result.p_error) return NextResponse.json({ error: result.p_error }, { status: 400 })
