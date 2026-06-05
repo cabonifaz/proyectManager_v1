@@ -155,7 +155,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       }
     }
 
-    // ── FASE 2: PROCESAR BACKLOG PRINCIPAL ──
+   // ── FASE 2: PROCESAR BACKLOG PRINCIPAL ──
     const existingItems = await query<ExistingItem>(
       `SELECT id, code FROM backlog_items WHERE project_id = ? AND deleted_at IS NULL`, [projectId]
     )
@@ -190,8 +190,10 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       let itemId: number
 
       if (existingId) {
+        // 🚀 CORRECCIÓN 1: Agregamos p_code aquí
         const upd = await callProcedureOut('sp_backlog_update', {
           p_tenant_id: ctx.tenantId, p_item_id: existingId,
+          p_code: String(row.codigo).trim(), 
           p_module: row.modulo ? String(row.modulo).trim() : null,
           p_description: String(row.descripcion).trim(),
           p_progress: avance,
@@ -221,8 +223,10 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         existingMap.set(codeKey, itemId) 
 
         if (avance !== null) {
+          // 🚀 CORRECCIÓN 2: Agregamos p_code: null aquí
           await callProcedureOut('sp_backlog_update', {
             p_tenant_id: ctx.tenantId, p_item_id: itemId,
+            p_code: null, 
             p_module: null, p_description: null,
             p_progress: avance, p_status: status, 
             p_sprint_num: null, p_eta: null, p_comment: null,

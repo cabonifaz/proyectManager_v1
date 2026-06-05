@@ -19,6 +19,7 @@ interface SprintItem {
   tech_columns: TechVal[]
   priority?: number;            // Incorporación de prioridad a nivel de item
   review_date?: string | null;  // Incorporación de fecha a nivel de item
+  obs_count?: number; // Propiedad agregada para el conteo de observaciones activas
 }
 
 const STATUS_OPTIONS = [
@@ -378,7 +379,22 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
                   return (
                     <tr key={item.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{item.code}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+  <div className="flex flex-col items-start gap-1">
+    <span className="font-mono text-xs">{item.code}</span>
+    
+    {item.obs_count !== undefined && item.obs_count > 0 && (
+      <a
+        href={`/${tenant}/observaciones?search=${item.code}`}
+        className="flex items-center gap-1.5 px-1.5 py-0.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 rounded transition-colors text-[9px] font-bold uppercase tracking-widest cursor-pointer mt-1"
+        title="Ver observaciones pendientes de este ticket"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+        {item.obs_count} {item.obs_count === 1 ? 'Obs Activa' : 'Obs Activas'}
+      </a>
+    )}
+  </div>
+</td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{item.module || '—'}</td>
                       <td className="px-3 py-2 max-w-xs">
                         <span className="line-clamp-2 block">{item.description}</span>
@@ -523,6 +539,7 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
   onSaved: () => void
 }) {
   const [form, setForm] = useState({
+    code:        item.code, // 🚀 Agregado
     progress:    item.progress,
     status:      item.status,
     eta:         item.eta ? item.eta.toString().slice(0, 10) : '',
@@ -552,6 +569,7 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          code:        form.code, // 🚀 Agregado
           module:      item.module      || null,
           description: item.description || null,
           progress:    Number(form.progress),
@@ -603,9 +621,16 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
           <h2 className="text-lg font-bold text-gray-800">Actualizar item del sprint</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
-        <p className="text-[10px] text-gray-400 font-mono font-bold uppercase mb-4 tracking-widest bg-gray-50 p-2 rounded">
-          {item.code} — {item.description}
-        </p>
+        {/* 🚀 Input editable para el código y descripción estática */}
+        <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+          <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Código del Ticket</label>
+          <input 
+            className="w-full border rounded-md px-3 py-1.5 text-sm font-mono font-bold text-gray-700 bg-white outline-none focus:border-blue-500 transition-colors uppercase"
+            value={form.code}
+            onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+          />
+          <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.description}</p>
+        </div>
 
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">{error}</div>

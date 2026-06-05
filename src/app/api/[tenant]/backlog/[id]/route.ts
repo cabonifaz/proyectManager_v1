@@ -16,6 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       {
         p_tenant_id:    ctx.tenantId,
         p_item_id:      id,
+        p_code:         body.code        ?? null, // 🚀 NUEVO: Enviamos el código
         p_module:       body.module      ?? null,
         p_description:  body.description ?? null,
         p_progress:     body.progress    ?? null,
@@ -30,6 +31,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
     )
 
     if (result.p_error) return NextResponse.json({ error: result.p_error }, { status: 400 })
+
+    // 🚀 NUEVO: Si se modificó el código, lo sincronizamos en la tabla de sprints
+    if (body.code) {
+      await query(
+        `UPDATE sprint_items SET code = ? WHERE backlog_item_id = ? AND deleted_at IS NULL`,
+        [String(body.code).trim(), id]
+      )
+    }
 
     // 2. Guardar Prioridad y Fecha de Revisión en la tabla correcta: SPRINT_ITEMS
     if (body.sprintNum && (body.priority !== undefined || body.reviewDate !== undefined)) {

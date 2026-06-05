@@ -438,8 +438,11 @@ export function BacklogClient({ projects, tenant, role }: {
           onClose={() => setShowImport(false)}
           onStartImport={(payload) => {
             setShowImport(false);
-            // 👇 Disparamos el hook global y recargamos la tabla al finalizar
-            startBackgroundImport(tenant, payload, () => fetchItems());
+            console.log("1. Modal cerrado. Disparando Contexto Global..."); // 👈 Agrega esto
+            startBackgroundImport(tenant, payload, () => {
+              console.log("2. Importación terminada, recargando tabla."); // 👈 Agrega esto
+              fetchItems();
+            });
           }}
         />
       )}

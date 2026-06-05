@@ -169,6 +169,7 @@ export function ImportModal({ tenant, projectId, techCols, onClose, onStartImpor
       sprintRows: sheetsData.sprints,
       obsRows: sheetsData.obs
     })
+    
   }
 
   const totalRows = sheetsData.backlog.length + sheetsData.sprints.length + sheetsData.obs.length
