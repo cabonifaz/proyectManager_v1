@@ -296,7 +296,13 @@ export function ObservacionesClient({ projects, tenant, role }: {
 
   function fmtDate(iso: string | null) {
     if (!iso) return '—'
-    return new Date(iso).toLocaleDateString('es-ES', { day:'2-digit', month:'2-digit', year:'numeric' })
+    // Forzamos a que lea la fecha en UTC puro para evitar que Perú le reste 5 horas
+    return new Date(iso).toLocaleDateString('es-ES', { 
+      timeZone: 'UTC', 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric' 
+    })
   }
 
   function etaClass(eta: string | null, estado: Observacion['estado']) {
