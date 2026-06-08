@@ -684,18 +684,24 @@ export function ObservacionesClient({ projects, tenant, role }: {
                 <div ref={backlogRef} className="relative">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Ítem Backlog</label>
                   {selectedBacklogItem && !backlogOpen ? (
-                    <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50">
-                      <div className="flex flex-col overflow-hidden">
-                        <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
-                        <span className="truncate text-gray-800 font-medium">{selectedBacklogItem.description}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
-                        className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
-                      >×</button>
-                    </div>
-                  ) : (
+  <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50">
+    <div className="flex flex-col overflow-hidden">
+      <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
+      {/* 🚀 Añadimos el title aquí para mostrar el texto completo al hacer hover */}
+      <span 
+        title={selectedBacklogItem.description} 
+        className="truncate text-gray-800 font-medium cursor-help"
+      >
+        {selectedBacklogItem.description}
+      </span>
+    </div>
+    <button
+      type="button"
+      onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
+      className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
+    >×</button>
+  </div>
+) : (
                     <input
                       type="text" value={backlogSearch}
                       onChange={e => { setBacklogSearch(e.target.value); setBacklogOpen(true) }}
@@ -710,18 +716,22 @@ export function ObservacionesClient({ projects, tenant, role }: {
                         <div className="px-4 py-3 text-gray-400 text-xs">Sin resultados</div>
                       ) : (
                         filteredBacklog.slice(0, 50).map(b => (
-                          <button
-                            key={b.id} type="button"
-                            onMouseDown={e => e.preventDefault()}
-                            onClick={() => {
-                              setForm(f => ({ ...f, backlogItemId: String(b.id) }))
-                              setBacklogSearch(''); setBacklogOpen(false)
-                            }}
-                            className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors"
-                          >
-                            <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span>
-                            <span className="text-gray-700 leading-tight">{b.description}</span>
-                          </button>
+                          // Dentro del .map() de filteredBacklog
+<button
+  key={b.id}
+  type="button"
+  onMouseDown={e => e.preventDefault()}
+  onClick={() => {
+    setForm(f => ({ ...f, backlogItemId: String(b.id) }))
+    setBacklogSearch('')
+    setBacklogOpen(false)
+  }}
+  className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors"
+  title={b.description} // 🚀 Añadimos title al botón completo para toda la fila
+>
+  <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span>
+  <span className="text-gray-700 leading-tight">{b.description}</span>
+</button>
                         ))
                       )}
                     </div>
