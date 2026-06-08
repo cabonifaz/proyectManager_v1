@@ -628,20 +628,26 @@ function ActiveSprintDevLoad({ tenant, projectId, sprintNum }: { tenant: string,
 
 // ─── OBSERVACIONES ────────────────────────────────────────────────────────────
 function ObsStatsPanel({ stats, overdueDevs }: { stats: ObsStats; overdueDevs: ObsOverdueDev[] }) {
-  const total   = stats.abierta + stats.en_seguimiento + stats.resuelta + stats.cerrada
+  // 🚀 Forzamos a JavaScript a tratar todo como números enteros
+  const v_abierta = Number(stats.abierta) || 0;
+  const v_en_seguimiento = Number(stats.en_seguimiento) || 0;
+  const v_resuelta = Number(stats.resuelta) || 0;
+  const v_cerrada = Number(stats.cerrada) || 0;
+
+  const total   = v_abierta + v_en_seguimiento + v_resuelta + v_cerrada
   if (total === 0) return null
-  const activas = stats.abierta + stats.en_seguimiento
+  const activas = v_abierta + v_en_seguimiento
 
   const estados = [
-    { label: 'Abiertas',       value: stats.abierta,        color: '#6b7280', bg: 'bg-gray-50',  text: 'text-gray-700'  },
-    { label: 'En seguimiento', value: stats.en_seguimiento, color: '#3b82f6', bg: 'bg-blue-50',  text: 'text-blue-700'  },
-    { label: 'Resueltas',      value: stats.resuelta,       color: '#22c55e', bg: 'bg-green-50', text: 'text-green-700' },
-    { label: 'Cerradas',       value: stats.cerrada,        color: '#d1d5db', bg: 'bg-gray-100', text: 'text-gray-500'  },
+    { label: 'Abiertas',       value: v_abierta,        color: '#6b7280', bg: 'bg-gray-50',  text: 'text-gray-700'  },
+    { label: 'En seguimiento', value: v_en_seguimiento, color: '#3b82f6', bg: 'bg-blue-50',  text: 'text-blue-700'  },
+    { label: 'Resueltas',      value: v_resuelta,       color: '#22c55e', bg: 'bg-green-50', text: 'text-green-700' },
+    { label: 'Cerradas',       value: v_cerrada,        color: '#d1d5db', bg: 'bg-gray-100', text: 'text-gray-500'  },
   ]
   const eta = [
-    { label: 'Vencidas',   value: stats.vencidas,   color: '#ef4444', text: 'text-red-700',    dot: 'bg-red-500'    },
-    { label: 'Por vencer', value: stats.por_vencer, color: '#f97316', text: 'text-orange-700', dot: 'bg-orange-400' },
-    { label: 'A tiempo',   value: stats.a_tiempo,   color: '#22c55e', text: 'text-green-700',  dot: 'bg-green-500'  },
+    { label: 'Vencidas',   value: Number(stats.vencidas) || 0,   color: '#ef4444', text: 'text-red-700',    dot: 'bg-red-500'    },
+    { label: 'Por vencer', value: Number(stats.por_vencer) || 0, color: '#f97316', text: 'text-orange-700', dot: 'bg-orange-400' },
+    { label: 'A tiempo',   value: Number(stats.a_tiempo) || 0,   color: '#22c55e', text: 'text-green-700',  dot: 'bg-green-500'  },
   ]
 
   return (

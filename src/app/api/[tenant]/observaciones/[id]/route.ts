@@ -23,16 +23,17 @@ export async function PATCH(
     const result = await callProcedureOut(
       'sp_observacion_update',
       {
-        p_tenant_id:    ctx.tenantId,
-        p_id:           Number(params.id),
-        p_tipo:         safeTipo,       // Usamos el valor limpio
-        p_prioridad:    safePrioridad,  // Usamos el valor limpio
-        p_titulo:       body.titulo ?? 'Sin título',
-        p_descripcion:  body.descripcion ?? null,
-        p_estado:       body.estado ?? 'abierta',
-        p_eta:          body.eta ?? null,
-        p_entregado_at: body.entregadoAt ?? null,
-        p_updated_by:   ctx.userId,
+        p_tenant_id:       ctx.tenantId,
+        p_id:              Number(params.id),
+        p_backlog_item_id: body.backlogItemId ?? null, // 🚀 AHORA SÍ ENVIAMOS EL TICKET
+        p_tipo:            safeTipo,
+        p_prioridad:       safePrioridad,
+        p_titulo:          body.titulo ?? 'Sin título',
+        p_descripcion:     body.descripcion ?? null,
+        p_estado:          body.estado ?? 'abierta',
+        p_eta:             body.eta ?? null,
+        p_entregado_at:    body.entregadoAt ?? null,
+        p_updated_by:      ctx.userId,
       },
       ['p_error'],
     )
