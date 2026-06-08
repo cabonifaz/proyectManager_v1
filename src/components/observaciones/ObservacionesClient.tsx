@@ -573,19 +573,18 @@ const [search, setSearch]             = useState('')
                 <div ref={backlogRef} className="relative">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Ítem Backlog</label>
                   {selectedBacklogItem && !backlogOpen ? (
-                    <div className="flex items-center gap-1 w-full border rounded px-3 py-2 text-sm bg-white">
-                      <span className="flex-1 truncate text-gray-800">
-                        <span className="font-medium text-blue-600">{selectedBacklogItem.code}</span>
-                        {' — '}
-                        {selectedBacklogItem.description}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
-                        className="text-gray-400 hover:text-gray-600 ml-1 shrink-0"
-                      >×</button>
-                    </div>
-                  ) : (
+  <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50"> {/* 🚀 Cambiado a bg-gray-50 para mejor contraste */}
+    <div className="flex flex-col overflow-hidden"> {/* 🚀 Estructura de columna */}
+      <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
+      <span className="truncate text-gray-800 font-medium">{selectedBacklogItem.description}</span>
+    </div>
+    <button
+      type="button"
+      onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
+      className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
+    >×</button>
+  </div>
+) : (
                     <input
                       type="text"
                       value={backlogSearch}
@@ -596,29 +595,29 @@ const [search, setSearch]             = useState('')
                     />
                   )}
                   {backlogOpen && (
-                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
-                      {filteredBacklog.length === 0 ? (
-                        <div className="px-3 py-2 text-gray-400 text-xs">Sin resultados</div>
-                      ) : (
-                        filteredBacklog.slice(0, 50).map(b => (
-                          <button
-                            key={b.id}
-                            type="button"
-                            onMouseDown={e => e.preventDefault()}
-                            onClick={() => {
-                              setForm(f => ({ ...f, backlogItemId: String(b.id) }))
-                              setBacklogSearch('')
-                              setBacklogOpen(false)
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-blue-50 flex gap-2 items-start"
-                          >
-                            <span className="font-medium text-blue-600 shrink-0">{b.code}</span>
-                            <span className="text-gray-600 truncate">{b.description}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
+  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-xl max-h-64 overflow-y-auto text-sm w-full min-w-[400px]"> {/* 🚀 Añadimos min-w y ajustamos max-h */}
+    {filteredBacklog.length === 0 ? (
+      <div className="px-4 py-3 text-gray-400 text-xs">Sin resultados</div>
+    ) : (
+      filteredBacklog.slice(0, 50).map(b => (
+        <button
+          key={b.id}
+          type="button"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => {
+            setForm(f => ({ ...f, backlogItemId: String(b.id) }))
+            setBacklogSearch('')
+            setBacklogOpen(false)
+          }}
+          className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors" // 🚀 Más padding y gap
+        >
+          <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span> {/* 🚀 Ancho fijo para el código */}
+          <span className="text-gray-700 leading-tight">{b.description}</span> {/* 🚀 Texto libre */}
+        </button>
+      ))
+    )}
+  </div>
+)}
                 </div>
               </div>
 
