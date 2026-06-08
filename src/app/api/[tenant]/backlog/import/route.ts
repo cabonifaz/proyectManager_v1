@@ -32,22 +32,24 @@ function normalizeObsStatus(val: string): string {
   return 'abierta';
 }
 
-// NUEVO: Traductor de prioridad para Observaciones
-function normalizeObsPriority(val: any): string {
-  if (!val || String(val).trim() === '') return 'baja';
+// NUEVO: Traductor de prioridad para Observaciones (Devuelve números)
+function normalizeObsPriority(val: any): number {
+  if (!val || String(val).trim() === '') return 0;
   
-  const strVal = String(val).toLowerCase().trim();
-  if (strVal.includes('alta') || strVal.includes('critica')) return 'alta';
-  if (strVal.includes('media')) return 'media';
-  if (strVal.includes('baja')) return 'baja';
-
   const num = Number(val);
   if (!isNaN(num)) {
-    if (num >= 8) return 'alta';    
-    if (num >= 4) return 'media';   
-    return 'baja';                  
+    if (num > 10) return 10;
+    if (num < 1) return 1;
+    return Math.round(num);
   }
-  return 'baja'; 
+  
+  // Por si el excel antiguo aún dice "alta", "media", "baja"
+  const strVal = String(val).toLowerCase().trim();
+  if (strVal.includes('alta') || strVal.includes('critica')) return 8;
+  if (strVal.includes('media')) return 5;
+  if (strVal.includes('baja')) return 2;
+
+  return 0; 
 }
 
 function parseDateStr(val: any): string | null {
@@ -361,6 +363,9 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       const dateStr = parseDateStr(rawRegDate)
       const createdAt = dateStr ? `${dateStr} 12:00:00` : new Date().toISOString().slice(0, 19).replace('T', ' ')
 
+      // Línea 271: Declaramos la prioridad mapeada
+      const obsPriority = normalizeObsPriority(row.prioridad || row.prio);
+
       try {
         let existObs: ExistingItem[] = []
         let currentObsId = 0;
@@ -372,23 +377,24 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         
         if (existObs.length > 0) {
           currentObsId = existObs[0].id;
-          // 🚀 ACTUALIZACIÓN SIN PRIORIDAD
+          // 🚀 Agregamos la prioridad al UPDATE
           await query(
             `UPDATE observaciones 
-             SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
+             SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), prioridad=?, eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
              WHERE id=?`,
-            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsEta, ctx.userId, currentObsId]
+            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsPriority, obsEta, ctx.userId, currentObsId]
           )
           results.oUpdated++
         } else {
-          // 🚀 Explicitamente pasamos NULL para prioridad
+          // 🚀 Agregamos la prioridad al INSERT (quitamos el NULL manual que tenías)
           const insertRes: any = await query(
             `INSERT INTO observaciones 
              (tenant_id, project_id, backlog_item_id, tipo, prioridad, titulo, descripcion, estado, eta, created_by, created_at) 
-             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
-            [ctx.tenantId, projectId, itemId, obsTypeInsert, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [ctx.tenantId, projectId, itemId, obsTypeInsert, obsPriority, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
           )
           results.oCreated++
+          // ... resto del código igual
           
           // ... resto del codigo igual
           

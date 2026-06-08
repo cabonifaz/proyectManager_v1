@@ -12,7 +12,7 @@ interface Observacion {
   project_id: number
   backlog_item_id: number | null
   tipo: 'riesgo' | 'bloqueo' | 'mejora' | 'nota'
-  prioridad: 'alta' | 'media' | 'baja'
+  prioridad: number // 🚀 Cambiado a número
   titulo: string
   descripcion: string | null
   estado: 'abierta' | 'en_seguimiento' | 'resuelta' | 'cerrada'
@@ -54,11 +54,7 @@ const TIPO_STYLES: Record<Observacion['tipo'], string> = {
   mejora:  'bg-blue-100 text-blue-700',
   nota:    'bg-gray-100 text-gray-700',
 }
-const PRIORIDAD_STYLES: Record<Observacion['prioridad'], string> = {
-  alta:  'bg-red-100 text-red-700',
-  media: 'bg-yellow-100 text-yellow-700',
-  baja:  'bg-green-100 text-green-700',
-}
+
 const ESTADO_STYLES: Record<Observacion['estado'], string> = {
   abierta:        'bg-gray-100 text-gray-700',
   en_seguimiento: 'bg-blue-100 text-blue-700',
@@ -67,10 +63,9 @@ const ESTADO_STYLES: Record<Observacion['estado'], string> = {
 }
 const TIPO_LABELS: Record<Observacion['tipo'], string>     = { riesgo:'Riesgo', bloqueo:'Bloqueo', mejora:'Mejora', nota:'Nota' }
 const ESTADO_LABELS: Record<Observacion['estado'], string> = { abierta:'Abierta', en_seguimiento:'En seguimiento', resuelta:'Resuelta', cerrada:'Cerrada' }
-const PRIORIDAD_LABELS: Record<Observacion['prioridad'], string> = { alta:'Alta', media:'Media', baja:'Baja' }
 
 const EMPTY_FORM: FormData = {
-  tipo:'nota', prioridad:'media', titulo:'', descripcion:'', estado:'abierta',
+  tipo:'nota', prioridad: 5, titulo:'', descripcion:'', estado:'abierta', // 🚀 Prioridad default es 5
   eta:'', entregadoAt:'', backlogItemId:'',
 }
 
@@ -414,8 +409,13 @@ export function ObservacionesClient({ projects, tenant, role }: {
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${PRIORIDAD_STYLES[item.prioridad]}`}>
-                      {PRIORIDAD_LABELS[item.prioridad]}
+                    {/* 🚀 Nueva Lógica de Color Dinámico para Prioridad Numérica */}
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${
+                      item.prioridad >= 8 ? 'bg-red-100 text-red-700' :
+                      item.prioridad >= 4 ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-green-100 text-green-700'
+                    }`}>
+                      Prio: {item.prioridad}
                     </span>
                   </td>
                   <td className="px-3 py-3 max-w-xs">
@@ -500,16 +500,16 @@ export function ObservacionesClient({ projects, tenant, role }: {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Prioridad</label>
-                  <select
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Prioridad (1-10)</label>
+                  {/* 🚀 Cambiado de Select a Input Numérico */}
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
                     value={form.prioridad}
-                    onChange={e => setForm(f => ({ ...f, prioridad: e.target.value as Observacion['prioridad'] }))}
+                    onChange={e => setForm(f => ({ ...f, prioridad: Number(e.target.value) }))}
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="alta">Alta</option>
-                    <option value="media">Media</option>
-                    <option value="baja">Baja</option>
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Estado</label>
@@ -685,8 +685,13 @@ export function ObservacionesClient({ projects, tenant, role }: {
                 <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${TIPO_STYLES[viewDetail.tipo]}`}>
                   {TIPO_LABELS[viewDetail.tipo]}
                 </span>
-                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${PRIORIDAD_STYLES[viewDetail.prioridad]}`}>
-                  {PRIORIDAD_LABELS[viewDetail.prioridad]}
+                {/* 🚀 Lógica dinámica en el modal de detalle también */}
+                <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${
+                  viewDetail.prioridad >= 8 ? 'bg-red-100 text-red-700' :
+                  viewDetail.prioridad >= 4 ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-green-100 text-green-700'
+                }`}>
+                  Prio: {viewDetail.prioridad}
                 </span>
                 <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${ESTADO_STYLES[viewDetail.estado]}`}>
                   {ESTADO_LABELS[viewDetail.estado]}
