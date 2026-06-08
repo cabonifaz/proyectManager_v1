@@ -4,7 +4,6 @@ import type { Role } from '@/lib/rbac'
 
 interface Project     { id: number; code: string; name: string; is_member?: number }
 interface TechCol     { id: number; col_key: string; name: string }
-// developer names are plain strings, not system users
 interface BacklogItem { id: number; code: string; description: string }
 
 interface Observacion {
@@ -12,7 +11,7 @@ interface Observacion {
   project_id: number
   backlog_item_id: number | null
   tipo: 'riesgo' | 'bloqueo' | 'mejora' | 'nota'
-  prioridad: number // 🚀 Cambiado a número
+  prioridad: number
   titulo: string
   descripcion: string | null
   estado: 'abierta' | 'en_seguimiento' | 'resuelta' | 'cerrada'
@@ -34,7 +33,6 @@ interface Asignacion {
   developer_name: string
 }
 
-// key = project_columns.id, value = developer name | null
 type AsignMap = Record<number, string | null>
 
 type FormData = {
@@ -48,6 +46,92 @@ type FormData = {
   backlogItemId: string
 }
 
+// ── Sorting ──────────────────────────────────────────────────────────────────
+type SortKey = 'tipo' | 'prioridad' | 'titulo' | 'estado' | 'eta' | 'entregado_at' | 'created_by_name' | 'created_at'
+type SortDir = 'asc' | 'desc'
+
+interface SortState { key: SortKey | null; dir: SortDir }
+
+/** Icono de ordenamiento en el encabezado */
+function SortIcon({ col, sort }: { col: SortKey; sort: SortState }) {
+  if (sort.key !== col) {
+    return (
+      <span className="ml-1 inline-flex flex-col leading-none opacity-30 text-[10px]">
+        <span>▲</span><span>▼</span>
+      </span>
+    )
+  }
+  return (
+    <span className="ml-1 text-blue-600 text-[10px]">
+      {sort.dir === 'asc' ? '▲' : '▼'}
+    </span>
+  )
+}
+
+/** Clase para el th según si está activo */
+function thClass(col: SortKey, sort: SortState) {
+  return `text-left px-3 py-3 font-medium whitespace-nowrap select-none cursor-pointer transition-colors ${
+    sort.key === col ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+  }`
+}
+
+/** Compara dos valores de Observacion para ordenar */
+function compareObs(a: Observacion, b: Observacion, key: SortKey, dir: SortDir): number {
+  let valA: string | number | null
+  let valB: string | number | null
+
+  switch (key) {
+    case 'prioridad':
+      valA = a.prioridad
+      valB = b.prioridad
+      break
+    case 'eta':
+      valA = a.eta ?? ''
+      valB = b.eta ?? ''
+      break
+    case 'entregado_at':
+      valA = a.entregado_at ?? ''
+      valB = b.entregado_at ?? ''
+      break
+    case 'created_at':
+      valA = a.created_at ?? ''
+      valB = b.created_at ?? ''
+      break
+    case 'tipo':
+      valA = a.tipo
+      valB = b.tipo
+      break
+    case 'estado':
+      valA = a.estado
+      valB = b.estado
+      break
+    case 'titulo':
+      valA = a.titulo.toLowerCase()
+      valB = b.titulo.toLowerCase()
+      break
+    case 'created_by_name':
+      valA = (a.created_by_name ?? '').toLowerCase()
+      valB = (b.created_by_name ?? '').toLowerCase()
+      break
+    default:
+      return 0
+  }
+
+  // Nulos/vacíos siempre al fondo
+  if (valA === '' && valB !== '') return 1
+  if (valB === '' && valA !== '') return -1
+
+  let result = 0
+  if (typeof valA === 'number' && typeof valB === 'number') {
+    result = valA - valB
+  } else {
+    result = String(valA) < String(valB) ? -1 : String(valA) > String(valB) ? 1 : 0
+  }
+
+  return dir === 'asc' ? result : -result
+}
+
+// ── Constantes de estilos ─────────────────────────────────────────────────────
 const TIPO_STYLES: Record<Observacion['tipo'], string> = {
   riesgo:  'bg-red-100 text-red-700',
   bloqueo: 'bg-orange-100 text-orange-700',
@@ -61,14 +145,16 @@ const ESTADO_STYLES: Record<Observacion['estado'], string> = {
   resuelta:       'bg-green-100 text-green-700',
   cerrada:        'bg-gray-200 text-gray-500',
 }
+
 const TIPO_LABELS: Record<Observacion['tipo'], string>     = { riesgo:'Riesgo', bloqueo:'Bloqueo', mejora:'Mejora', nota:'Nota' }
 const ESTADO_LABELS: Record<Observacion['estado'], string> = { abierta:'Abierta', en_seguimiento:'En seguimiento', resuelta:'Resuelta', cerrada:'Cerrada' }
 
 const EMPTY_FORM: FormData = {
-  tipo:'nota', prioridad: 5, titulo:'', descripcion:'', estado:'abierta', // 🚀 Prioridad default es 5
+  tipo:'nota', prioridad: 5, titulo:'', descripcion:'', estado:'abierta',
   eta:'', entregadoAt:'', backlogItemId:'',
 }
 
+// ── Componente principal ──────────────────────────────────────────────────────
 export function ObservacionesClient({ projects, tenant, role }: {
   projects: Project[]; tenant: string; role: Role
 }) {
@@ -84,8 +170,8 @@ export function ObservacionesClient({ projects, tenant, role }: {
   const backlogRef                      = useRef<HTMLDivElement>(null)
   const [loading, setLoading]           = useState(false)
   const [fetchError, setFetchError]     = useState('')
-const [search, setSearch]             = useState('')
-  const [estadoFilter, setEstado]       = useState('abierta') // 🚀 Muestra solo las abiertas por defecto
+  const [search, setSearch]             = useState('')
+  const [estadoFilter, setEstado]       = useState('abierta')
   const [tipoFilter, setTipo]           = useState('')
   const [showForm, setShowForm]         = useState(false)
   const [editItem, setEditItem]         = useState<Observacion | null>(null)
@@ -98,10 +184,27 @@ const [search, setSearch]             = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [itemToDelete, setItemToDelete]           = useState<Observacion | null>(null)
 
- const canCreate    = role !== 'desarrollador';
-  const canEdit      = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
-  const canDelete    = ['super_admin','gestor_proyecto'].includes(role)
-  const canAssign    = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
+  // ── NUEVO: estado de ordenamiento ──
+  const [sort, setSort] = useState<SortState>({ key: null, dir: 'asc' })
+
+  const canCreate = role !== 'desarrollador'
+  const canEdit   = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
+  const canDelete = ['super_admin','gestor_proyecto'].includes(role)
+  const canAssign = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
+
+  // ── Ciclo asc → desc → sin orden al hacer click en columna ──
+  function handleSort(col: SortKey) {
+    setSort(prev => {
+      if (prev.key !== col) return { key: col, dir: 'asc' }
+      if (prev.dir === 'asc') return { key: col, dir: 'desc' }
+      return { key: null, dir: 'asc' }
+    })
+  }
+
+  // ── Items ordenados (derivado, sin estado extra) ──
+  const sortedItems = sort.key
+    ? [...items].sort((a, b) => compareObs(a, b, sort.key!, sort.dir))
+    : items
 
   // Cierra el dropdown de backlog al hacer click fuera
   useEffect(() => {
@@ -114,38 +217,29 @@ const [search, setSearch]             = useState('')
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
-  // Carga columnas técnicas del proyecto
   const fetchTechCols = useCallback(async (pid: number) => {
     try {
       const res  = await fetch(`/api/${tenant}/projects/${pid}/columns`)
       const json = await res.json()
       setTechCols(json.data ?? [])
-    } catch {
-      setTechCols([])
-    }
+    } catch { setTechCols([]) }
   }, [tenant])
 
-  // Carga desarrolladores que han atendido sprints del proyecto
   const fetchSprintDevs = useCallback(async (pid: number) => {
     if (!canAssign) return
     try {
       const res  = await fetch(`/api/${tenant}/projects/${pid}/sprint-developers`)
       const json = await res.json()
       setSprintDevs(json.data ?? [])
-    } catch {
-      setSprintDevs([])
-    }
+    } catch { setSprintDevs([]) }
   }, [tenant, canAssign])
 
-  // Carga ítems del backlog del proyecto para el buscador
   const fetchBacklogItems = useCallback(async (pid: number) => {
     try {
       const res  = await fetch(`/api/${tenant}/backlog?projectId=${pid}&limit=500`)
       const json = await res.json()
       setBacklogItems(json.data ?? [])
-    } catch {
-      setBacklogItems([])
-    }
+    } catch { setBacklogItems([]) }
   }, [tenant])
 
   const fetchItems = useCallback(async () => {
@@ -161,11 +255,9 @@ const [search, setSearch]             = useState('')
       const json = await res.json()
       if (!res.ok) { setFetchError(`Error ${res.status}: ${json.error}`); return }
       setItems(json.data ?? [])
-    } catch {
-      setFetchError('Error de conexión')
-    } finally {
-      setLoading(false)
-    }
+      // Nota: el sort se mantiene al recargar — los datos nuevos se ordenan automáticamente
+    } catch { setFetchError('Error de conexión') }
+    finally   { setLoading(false) }
   }, [projectId, tenant, estadoFilter, tipoFilter, search])
 
   useEffect(() => { fetchItems() }, [fetchItems])
@@ -183,19 +275,12 @@ const [search, setSearch]             = useState('')
       const res  = await fetch(`/api/${tenant}/observaciones/${obsId}/asignaciones`)
       const json = await res.json()
       return json.data ?? []
-    } catch {
-      return []
-    }
+    } catch { return [] }
   }
 
   function openCreate() {
-    setEditItem(null)
-    setForm(EMPTY_FORM)
-    setAsignMap({})
-    setFormError('')
-    setBacklogSearch('')
-    setBacklogOpen(false)
-    setShowForm(true)
+    setEditItem(null); setForm(EMPTY_FORM); setAsignMap({}); setFormError('')
+    setBacklogSearch(''); setBacklogOpen(false); setShowForm(true)
   }
 
   async function openEdit(item: Observacion) {
@@ -210,9 +295,7 @@ const [search, setSearch]             = useState('')
       entregadoAt:   item.entregado_at ? item.entregado_at.slice(0, 10) : '',
       backlogItemId: item.backlog_item_id ? String(item.backlog_item_id) : '',
     })
-    setFormError('')
-    setBacklogSearch('')
-    setBacklogOpen(false)
+    setFormError(''); setBacklogSearch(''); setBacklogOpen(false)
     const asigns = await fetchAsignaciones(item.id)
     const map: AsignMap = {}
     asigns.forEach(a => { map[a.column_id] = a.developer_name })
@@ -229,15 +312,12 @@ const [search, setSearch]             = useState('')
   async function handleSave() {
     if (!form.titulo.trim()) { setFormError('El título es obligatorio'); return }
     if (!projectId) return
-    setSaving(true)
-    setFormError('')
+    setSaving(true); setFormError('')
     try {
       const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/${tenant}/observaciones`
       const method = editItem ? 'PATCH' : 'POST'
       const body: Record<string, unknown> = {
-        projectId,
-        tipo:          form.tipo,
-        prioridad:     form.prioridad,
+        projectId, tipo: form.tipo, prioridad: form.prioridad,
         titulo:        form.titulo.trim(),
         descripcion:   form.descripcion.trim() || null,
         estado:        form.estado,
@@ -245,33 +325,23 @@ const [search, setSearch]             = useState('')
         entregadoAt:   form.entregadoAt   || null,
         backlogItemId: form.backlogItemId  ? Number(form.backlogItemId) : null,
       }
-
       const res  = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json()
       if (!res.ok) { setFormError(json.error ?? 'Error al guardar'); return }
 
       const obsId = editItem ? editItem.id : json.id
-
-      // Guardar asignaciones si el rol puede asignar
       if (canAssign && techCols.length > 0) {
         const asignaciones = techCols
           .filter(tc => asignMap[tc.id] != null && asignMap[tc.id] !== '')
           .map(tc => ({ techColId: tc.id, colKey: tc.col_key, techName: tc.name, developerName: asignMap[tc.id]! }))
-
         await fetch(`/api/${tenant}/observaciones/${obsId}/asignaciones`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ asignaciones }),
         })
       }
-
-      setShowForm(false)
-      fetchItems()
-    } catch {
-      setFormError('Error de conexión')
-    } finally {
-      setSaving(false)
-    }
+      setShowForm(false); fetchItems()
+    } catch { setFormError('Error de conexión') }
+    finally   { setSaving(false) }
   }
 
   async function confirmDelete() {
@@ -281,22 +351,16 @@ const [search, setSearch]             = useState('')
       const json = await res.json()
       if (!res.ok) { alert(json.error ?? 'Error al eliminar'); return }
       fetchItems()
-    } catch {
-      alert('Error de conexión')
-    } finally {
-      setIsDeleteModalOpen(false)
-      setItemToDelete(null)
+    } catch { alert('Error de conexión') }
+    finally {
+      setIsDeleteModalOpen(false); setItemToDelete(null)
     }
   }
 
   function fmtDate(iso: string | null) {
     if (!iso) return '—'
-    // Forzamos a que lea la fecha en UTC puro para evitar que Perú le reste 5 horas
-    return new Date(iso).toLocaleDateString('es-ES', { 
-      timeZone: 'UTC', 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric' 
+    return new Date(iso).toLocaleDateString('es-ES', {
+      timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric'
     })
   }
 
@@ -309,7 +373,6 @@ const [search, setSearch]             = useState('')
   }
 
   const selectedBacklogItem = backlogItems.find(b => String(b.id) === form.backlogItemId) ?? null
-
   const filteredBacklog = backlogSearch.trim()
     ? backlogItems.filter(b =>
         b.code.toLowerCase().includes(backlogSearch.toLowerCase()) ||
@@ -317,6 +380,7 @@ const [search, setSearch]             = useState('')
       )
     : backlogItems
 
+  // ── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       {/* Barra de filtros */}
@@ -363,6 +427,18 @@ const [search, setSearch]             = useState('')
           className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
         />
 
+        {/* Indicador de ordenamiento activo */}
+        {sort.key && (
+          <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded">
+            Orden: <strong>{sort.key}</strong> {sort.dir === 'asc' ? '▲' : '▼'}
+            <button
+              onClick={() => setSort({ key: null, dir: 'asc' })}
+              className="ml-1 text-blue-400 hover:text-blue-700 font-bold"
+              title="Quitar ordenamiento"
+            >×</button>
+          </span>
+        )}
+
         {canCreate && (
           <button
             onClick={openCreate}
@@ -389,19 +465,65 @@ const [search, setSearch]             = useState('')
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Tipo</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Prioridad</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Título</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Estado</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">ETA</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Entregado</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Asignaciones</th>
-                <th className="text-left px-3 py-3 font-medium text-gray-600">Registrado por</th>
+                {/* ── Encabezados clicables ── */}
+                <th
+                  className={thClass('tipo', sort)}
+                  onClick={() => handleSort('tipo')}
+                  title="Ordenar por Tipo"
+                >
+                  Tipo <SortIcon col="tipo" sort={sort} />
+                </th>
+                <th
+                  className={thClass('prioridad', sort)}
+                  onClick={() => handleSort('prioridad')}
+                  title="Ordenar por Prioridad"
+                >
+                  Prioridad <SortIcon col="prioridad" sort={sort} />
+                </th>
+                <th
+                  className={thClass('titulo', sort)}
+                  onClick={() => handleSort('titulo')}
+                  title="Ordenar por Título"
+                >
+                  Título <SortIcon col="titulo" sort={sort} />
+                </th>
+                <th
+                  className={thClass('estado', sort)}
+                  onClick={() => handleSort('estado')}
+                  title="Ordenar por Estado"
+                >
+                  Estado <SortIcon col="estado" sort={sort} />
+                </th>
+                <th
+                  className={thClass('eta', sort)}
+                  onClick={() => handleSort('eta')}
+                  title="Ordenar por ETA"
+                >
+                  ETA <SortIcon col="eta" sort={sort} />
+                </th>
+                <th
+                  className={thClass('entregado_at', sort)}
+                  onClick={() => handleSort('entregado_at')}
+                  title="Ordenar por fecha de entrega"
+                >
+                  Entregado <SortIcon col="entregado_at" sort={sort} />
+                </th>
+                {/* Asignaciones no tiene valor ordenable directo — se deja sin sort */}
+                <th className="text-left px-3 py-3 font-medium text-gray-600 whitespace-nowrap">
+                  Asignaciones
+                </th>
+                <th
+                  className={thClass('created_by_name', sort)}
+                  onClick={() => handleSort('created_by_name')}
+                  title="Ordenar por usuario"
+                >
+                  Registrado por <SortIcon col="created_by_name" sort={sort} />
+                </th>
                 <th className="px-3 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map(item => (
+              {sortedItems.map(item => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-3 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${TIPO_STYLES[item.tipo]}`}>
@@ -409,7 +531,6 @@ const [search, setSearch]             = useState('')
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    {/* 🚀 Nueva Lógica de Color Dinámico para Prioridad Numérica */}
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${
                       item.prioridad >= 8 ? 'bg-red-100 text-red-700' :
                       item.prioridad >= 4 ? 'bg-yellow-100 text-yellow-700' :
@@ -456,12 +577,12 @@ const [search, setSearch]             = useState('')
                         <button onClick={() => openEdit(item)} className="text-xs text-blue-600 hover:underline">Editar</button>
                       )}
                       {canDelete && (
-                        <button 
-  onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true); }} 
-  className="text-xs text-red-500 hover:underline"
->
-  Eliminar
-</button>
+                        <button
+                          onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true) }}
+                          className="text-xs text-red-500 hover:underline"
+                        >
+                          Eliminar
+                        </button>
                       )}
                     </div>
                   </td>
@@ -484,7 +605,6 @@ const [search, setSearch]             = useState('')
             </div>
 
             <div className="px-6 py-5 space-y-4">
-              {/* Tipo, Prioridad, Estado */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Tipo *</label>
@@ -501,11 +621,8 @@ const [search, setSearch]             = useState('')
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Prioridad (1-10)</label>
-                  {/* 🚀 Cambiado de Select a Input Numérico */}
                   <input
-                    type="number"
-                    min="1"
-                    max="10"
+                    type="number" min="1" max="10"
                     value={form.prioridad}
                     onChange={e => setForm(f => ({ ...f, prioridad: Number(e.target.value) }))}
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -526,19 +643,16 @@ const [search, setSearch]             = useState('')
                 </div>
               </div>
 
-              {/* Título */}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Título *</label>
                 <input
-                  type="text"
-                  value={form.titulo}
+                  type="text" value={form.titulo}
                   onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))}
                   placeholder="Título de la observación"
                   className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
-              {/* Descripción */}
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Descripción</label>
                 <textarea
@@ -550,13 +664,11 @@ const [search, setSearch]             = useState('')
                 />
               </div>
 
-              {/* ETA, Entregado, Backlog */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">ETA (fecha límite)</label>
                   <input
-                    type="date"
-                    value={form.eta}
+                    type="date" value={form.eta}
                     onChange={e => setForm(f => ({ ...f, eta: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -564,8 +676,7 @@ const [search, setSearch]             = useState('')
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Fecha real entrega</label>
                   <input
-                    type="date"
-                    value={form.entregadoAt}
+                    type="date" value={form.entregadoAt}
                     onChange={e => setForm(f => ({ ...f, entregadoAt: e.target.value }))}
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -573,21 +684,20 @@ const [search, setSearch]             = useState('')
                 <div ref={backlogRef} className="relative">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Ítem Backlog</label>
                   {selectedBacklogItem && !backlogOpen ? (
-  <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50"> {/* 🚀 Cambiado a bg-gray-50 para mejor contraste */}
-    <div className="flex flex-col overflow-hidden"> {/* 🚀 Estructura de columna */}
-      <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
-      <span className="truncate text-gray-800 font-medium">{selectedBacklogItem.description}</span>
-    </div>
-    <button
-      type="button"
-      onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
-      className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
-    >×</button>
-  </div>
-) : (
+                    <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50">
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
+                        <span className="truncate text-gray-800 font-medium">{selectedBacklogItem.description}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
+                        className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
+                      >×</button>
+                    </div>
+                  ) : (
                     <input
-                      type="text"
-                      value={backlogSearch}
+                      type="text" value={backlogSearch}
                       onChange={e => { setBacklogSearch(e.target.value); setBacklogOpen(true) }}
                       onFocus={() => setBacklogOpen(true)}
                       placeholder="Buscar por código o descripción..."
@@ -595,33 +705,30 @@ const [search, setSearch]             = useState('')
                     />
                   )}
                   {backlogOpen && (
-  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-xl max-h-64 overflow-y-auto text-sm w-full min-w-[400px]"> {/* 🚀 Añadimos min-w y ajustamos max-h */}
-    {filteredBacklog.length === 0 ? (
-      <div className="px-4 py-3 text-gray-400 text-xs">Sin resultados</div>
-    ) : (
-      filteredBacklog.slice(0, 50).map(b => (
-        <button
-          key={b.id}
-          type="button"
-          onMouseDown={e => e.preventDefault()}
-          onClick={() => {
-            setForm(f => ({ ...f, backlogItemId: String(b.id) }))
-            setBacklogSearch('')
-            setBacklogOpen(false)
-          }}
-          className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors" // 🚀 Más padding y gap
-        >
-          <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span> {/* 🚀 Ancho fijo para el código */}
-          <span className="text-gray-700 leading-tight">{b.description}</span> {/* 🚀 Texto libre */}
-        </button>
-      ))
-    )}
-  </div>
-)}
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-xl max-h-64 overflow-y-auto text-sm w-full min-w-[400px]">
+                      {filteredBacklog.length === 0 ? (
+                        <div className="px-4 py-3 text-gray-400 text-xs">Sin resultados</div>
+                      ) : (
+                        filteredBacklog.slice(0, 50).map(b => (
+                          <button
+                            key={b.id} type="button"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => {
+                              setForm(f => ({ ...f, backlogItemId: String(b.id) }))
+                              setBacklogSearch(''); setBacklogOpen(false)
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors"
+                          >
+                            <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span>
+                            <span className="text-gray-700 leading-tight">{b.description}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Asignaciones por tecnología */}
               {canAssign && techCols.length > 0 && (
                 <div className="border rounded-lg overflow-hidden">
                   <div className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between">
@@ -657,15 +764,11 @@ const [search, setSearch]             = useState('')
             </div>
 
             <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 rounded-b-lg">
-              <button
-                onClick={() => setShowForm(false)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-              >
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
                 Cancelar
               </button>
               <button
-                onClick={handleSave}
-                disabled={saving}
+                onClick={handleSave} disabled={saving}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {saving ? 'Guardando...' : editItem ? 'Guardar cambios' : 'Crear observación'}
@@ -684,7 +787,6 @@ const [search, setSearch]             = useState('')
                 <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${TIPO_STYLES[viewDetail.tipo]}`}>
                   {TIPO_LABELS[viewDetail.tipo]}
                 </span>
-                {/* 🚀 Lógica dinámica en el modal de detalle también */}
                 <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${
                   viewDetail.prioridad >= 8 ? 'bg-red-100 text-red-700' :
                   viewDetail.prioridad >= 4 ? 'bg-yellow-100 text-yellow-700' :
@@ -701,35 +803,24 @@ const [search, setSearch]             = useState('')
 
             <div className="px-6 py-5 space-y-4">
               <h3 className="font-semibold text-gray-800 text-base">{viewDetail.titulo}</h3>
-
               {viewDetail.descripcion ? (
                 <p className="text-gray-600 text-sm whitespace-pre-wrap">{viewDetail.descripcion}</p>
               ) : (
                 <p className="text-gray-400 text-sm italic">Sin descripción.</p>
               )}
-
-              {/* Fechas */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="bg-gray-50 rounded px-3 py-2">
                   <p className="text-xs text-gray-400 mb-0.5">ETA (fecha límite)</p>
-                  <p className={`font-medium ${etaClass(viewDetail.eta, viewDetail.estado)}`}>
-                    {fmtDate(viewDetail.eta)}
-                  </p>
+                  <p className={`font-medium ${etaClass(viewDetail.eta, viewDetail.estado)}`}>{fmtDate(viewDetail.eta)}</p>
                 </div>
                 <div className="bg-gray-50 rounded px-3 py-2">
                   <p className="text-xs text-gray-400 mb-0.5">Fecha real de entrega</p>
-                  <p className={`font-medium ${viewDetail.entregado_at ? 'text-green-600' : 'text-gray-400'}`}>
-                    {fmtDate(viewDetail.entregado_at)}
-                  </p>
+                  <p className={`font-medium ${viewDetail.entregado_at ? 'text-green-600' : 'text-gray-400'}`}>{fmtDate(viewDetail.entregado_at)}</p>
                 </div>
               </div>
-
-              {/* Asignaciones */}
               {detailAsigns.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                    Responsables por tecnología
-                  </p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Responsables por tecnología</p>
                   <div className="divide-y border rounded-lg overflow-hidden">
                     {detailAsigns.map(a => (
                       <div key={a.id} className="flex items-center justify-between px-3 py-2 text-sm">
@@ -740,8 +831,6 @@ const [search, setSearch]             = useState('')
                   </div>
                 </div>
               )}
-
-              {/* Meta */}
               <div className="pt-2 border-t text-xs text-gray-400 flex flex-wrap gap-4">
                 <span>Por: <strong className="text-gray-600">{viewDetail.created_by_name ?? '—'}</strong></span>
                 <span>Fecha: <strong className="text-gray-600">{fmtDate(viewDetail.created_at)}</strong></span>
@@ -760,34 +849,28 @@ const [search, setSearch]             = useState('')
                   Editar
                 </button>
               )}
-              <button
-                onClick={() => setViewDetail(null)}
-                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
-              >
+              <button onClick={() => setViewDetail(null)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
                 Cerrar
               </button>
             </div>
           </div>
         </div>
       )}
+
       {/* ── Modal confirmar eliminación ── */}
       {isDeleteModalOpen && itemToDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 overflow-hidden">
             <div className="p-6">
-              <h3 className="text-lg font-bold text-gray-800 mb-2">
-                Confirmar eliminación
-              </h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-2">Confirmar eliminación</h3>
               <p className="text-sm text-gray-600 mb-6">
-                ¿Estás seguro de que deseas eliminar la observación <strong className="text-gray-800">"{itemToDelete.titulo}"</strong>? Esta acción no se puede deshacer.
+                ¿Estás seguro de que deseas eliminar la observación{' '}
+                <strong className="text-gray-800">"{itemToDelete.titulo}"</strong>?
+                Esta acción no se puede deshacer.
               </p>
-              
               <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
                 <button
-                  onClick={() => {
-                    setIsDeleteModalOpen(false);
-                    setItemToDelete(null);
-                  }}
+                  onClick={() => { setIsDeleteModalOpen(false); setItemToDelete(null) }}
                   className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                 >
                   Cancelar
