@@ -366,7 +366,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       // Línea 271: Declaramos la prioridad mapeada
       const obsPriority = normalizeObsPriority(row.prioridad || row.prio);
 
-      try {
+try {
         let existObs: ExistingItem[] = []
         let currentObsId = 0;
         
@@ -377,26 +377,23 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         
         if (existObs.length > 0) {
           currentObsId = existObs[0].id;
-          // 🚀 Agregamos la prioridad al UPDATE
+          // 🚀 ACTUALIZACIÓN SIN PRIORIDAD (Se mantiene el valor que ya tuviera en BD)
           await query(
             `UPDATE observaciones 
-             SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), prioridad=?, eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
+             SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
              WHERE id=?`,
-            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsPriority, obsEta, ctx.userId, currentObsId]
+            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsEta, ctx.userId, currentObsId]
           )
           results.oUpdated++
         } else {
-          // 🚀 Agregamos la prioridad al INSERT (quitamos el NULL manual que tenías)
+          // 🚀 INSERCIÓN CON PRIORIDAD NULA (NULL explícito)
           const insertRes: any = await query(
             `INSERT INTO observaciones 
              (tenant_id, project_id, backlog_item_id, tipo, prioridad, titulo, descripcion, estado, eta, created_by, created_at) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [ctx.tenantId, projectId, itemId, obsTypeInsert, obsPriority, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
+             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+            [ctx.tenantId, projectId, itemId, obsTypeInsert, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
           )
           results.oCreated++
-          // ... resto del código igual
-          
-          // ... resto del codigo igual
           
           currentObsId = insertRes?.insertId || 0;
           
