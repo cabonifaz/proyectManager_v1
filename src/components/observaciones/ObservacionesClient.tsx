@@ -84,8 +84,8 @@ export function ObservacionesClient({ projects, tenant, role }: {
   const backlogRef                      = useRef<HTMLDivElement>(null)
   const [loading, setLoading]           = useState(false)
   const [fetchError, setFetchError]     = useState('')
-  const [search, setSearch]             = useState('')
-  const [estadoFilter, setEstado]       = useState('')
+const [search, setSearch]             = useState('')
+  const [estadoFilter, setEstado]       = useState('abierta') // 🚀 Muestra solo las abiertas por defecto
   const [tipoFilter, setTipo]           = useState('')
   const [showForm, setShowForm]         = useState(false)
   const [editItem, setEditItem]         = useState<Observacion | null>(null)
