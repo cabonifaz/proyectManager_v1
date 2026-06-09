@@ -572,16 +572,17 @@ export function ObservacionesClient({ projects, tenant, role }: {
   )}
 </td>
                   <td className="px-3 py-3 max-w-xs">
-                    <button
-                      onClick={() => openDetail(item)}
-                      className="text-left font-medium text-gray-800 hover:text-blue-600 transition-colors line-clamp-1"
-                    >
-                      {item.titulo}
-                    </button>
-                    {item.backlog_code && (
-                      <span className="text-xs text-gray-400 ml-1">#{item.backlog_code}</span>
-                    )}
-                  </td>
+  <button
+    onClick={() => openDetail(item)}
+    title={item.titulo} /* 🚀 Agregamos el tooltip nativo aquí */
+    className="text-left font-medium text-gray-800 hover:text-blue-600 transition-colors line-clamp-1 cursor-help"
+  >
+    {item.titulo}
+  </button>
+  {item.backlog_code && (
+    <span className="text-xs text-gray-400 ml-1 block mt-0.5">#{item.backlog_code}</span>
+  )}
+</td>
                   <td className="px-3 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${ESTADO_STYLES[item.estado]}`}>
                       {ESTADO_LABELS[item.estado]}
