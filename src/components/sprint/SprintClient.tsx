@@ -45,7 +45,29 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
     role === 'super_admin' || Number(p.is_member) > 0
   )
 
-  const [projectId, setProjectId]           = useState<number | null>(allowedProjects[0]?.id ?? null)
+  // 🚀 1. Iniciamos en null para leer la memoria local
+  const [projectId, setProjectId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const savedId = localStorage.getItem('pm_selected_project') ? Number(localStorage.getItem('pm_selected_project')) : null;
+    
+    let targetId = null;
+
+    if (savedId && allowedProjects.some(p => p.id === savedId)) {
+      targetId = savedId;
+    } else {
+      targetId = allowedProjects[0]?.id ?? null;
+    }
+
+    setProjectId(targetId);
+    if (targetId) localStorage.setItem('pm_selected_project', String(targetId));
+  }, [allowedProjects]);
+
+  // 🚀 2. Función para guardar el cambio de proyecto en memoria
+  const handleProjectChange = (newId: number) => {
+    setProjectId(newId);
+    localStorage.setItem('pm_selected_project', String(newId));
+  };
   const [sprints, setSprints]               = useState<Sprint[]>([])
   const [activeSprint, setActiveSprint]     = useState<Sprint | null>(null)
   const [items, setItems]                   = useState<SprintItem[]>([])
@@ -173,7 +195,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         <select
           className="border rounded px-3 py-1.5 text-sm"
           value={projectId ?? ''}
-          onChange={e => setProjectId(Number(e.target.value))}
+          onChange={e => handleProjectChange(Number(e.target.value))} 
         >
           {allowedProjects.map(p => (
             <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
@@ -653,9 +675,17 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Avance %</label>
               <input type="number" min={0} max={100}
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                value={form.progress}
-                onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))} />
+    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+    value={form.progress}
+    onChange={e => {
+      const p = Number(e.target.value);
+      let s = form.status;
+      if (p === 0) s = 'pendiente';
+      else if (p > 0 && p < 100) s = 'en_progreso';
+      else if (p === 100) s = 'completado';
+      setForm(f => ({ ...f, progress: p, status: s }));
+    }} 
+  />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">ETA</label>

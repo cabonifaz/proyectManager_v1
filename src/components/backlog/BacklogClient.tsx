@@ -36,11 +36,33 @@ export function BacklogClient({ projects, tenant, role }: {
     role === 'super_admin' || Number(p.is_member) > 0
   )
 
-  const initialProjectId = urlProjectId 
-    ? allowedProjects.find(p => p.id === Number(urlProjectId))?.id ?? allowedProjects[0]?.id
-    : allowedProjects[0]?.id;
+  // 🚀 1. Iniciamos en null para leer la memoria local
+  const [projectId, setProjectId] = useState<number | null>(null);
 
-  const [projectId, setProjectId]         = useState<number | null>(initialProjectId ?? null)
+  useEffect(() => {
+    // La URL manda primero, luego la memoria local, y por último el proyecto por defecto
+    const urlId = urlProjectId ? Number(urlProjectId) : null;
+    const savedId = localStorage.getItem('pm_selected_project') ? Number(localStorage.getItem('pm_selected_project')) : null;
+    
+    let targetId = null;
+
+    if (urlId && allowedProjects.some(p => p.id === urlId)) {
+      targetId = urlId;
+    } else if (savedId && allowedProjects.some(p => p.id === savedId)) {
+      targetId = savedId;
+    } else {
+      targetId = allowedProjects[0]?.id ?? null;
+    }
+
+    setProjectId(targetId);
+    if (targetId) localStorage.setItem('pm_selected_project', String(targetId));
+  }, [allowedProjects, urlProjectId]);
+
+  // 🚀 2. Función para guardar el cambio de proyecto en memoria
+  const handleProjectChange = (newId: number) => {
+    setProjectId(newId);
+    localStorage.setItem('pm_selected_project', String(newId));
+  };
   const [items, setItems]                 = useState<BacklogItem[]>([])
   const [techCols, setTechCols]           = useState<TechCol[]>([])
   const [loading, setLoading]             = useState(false)
@@ -206,7 +228,7 @@ export function BacklogClient({ projects, tenant, role }: {
         <select
           className="border rounded px-3 py-1.5 text-sm"
           value={projectId ?? ''}
-          onChange={e => setProjectId(Number(e.target.value))}
+          onChange={e => handleProjectChange(Number(e.target.value))} 
         >
           {allowedProjects.length === 0 && <option value="">Sin proyectos permitidos</option>}
           {allowedProjects.map(p => (
@@ -642,8 +664,19 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Avance %</label>
               <div className="flex items-center gap-2">
-                <input type="number" min={0} max={100} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-                  value={form.progress} onChange={e => setForm(f => ({ ...f, progress: Number(e.target.value) }))} />
+                <input 
+    type="number" min={0} max={100} 
+    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+    value={form.progress} 
+    onChange={e => {
+      const p = Number(e.target.value);
+      let s = form.status;
+      if (p === 0) s = 'pendiente';
+      else if (p > 0 && p < 100) s = 'en_progreso';
+      else if (p === 100) s = 'completado';
+      setForm(f => ({ ...f, progress: p, status: s }));
+    }} 
+  />
                 <span className="text-sm font-medium text-gray-500 w-8">%</span>
               </div>
             </div>

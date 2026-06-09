@@ -160,7 +160,28 @@ export function ObservacionesClient({ projects, tenant, role }: {
 }) {
   const allowedProjects = projects.filter(p => role === 'super_admin' || Number(p.is_member) > 0)
 
-  const [projectId, setProjectId]       = useState<number | null>(allowedProjects[0]?.id ?? null)
+  // 🚀 1. Iniciamos en null para leer la memoria local
+  const [projectId, setProjectId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const savedProject = localStorage.getItem('pm_selected_project');
+    if (savedProject) {
+      const id = Number(savedProject);
+      if (allowedProjects.some(p => p.id === id)) {
+        setProjectId(id);
+        return;
+      }
+    }
+    const defaultId = allowedProjects[0]?.id ?? null;
+    setProjectId(defaultId);
+    if (defaultId) localStorage.setItem('pm_selected_project', String(defaultId));
+  }, [allowedProjects]);
+
+  // 🚀 2. Función para guardar el cambio de proyecto en memoria
+  const handleProjectChange = (newId: number) => {
+    setProjectId(newId);
+    localStorage.setItem('pm_selected_project', String(newId));
+  };
   const [items, setItems]               = useState<Observacion[]>([])
   const [techCols, setTechCols]         = useState<TechCol[]>([])
   const [sprintDevs, setSprintDevs]     = useState<string[]>([])
@@ -387,7 +408,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
       <div className="flex flex-wrap gap-3 items-center">
         <select
           value={projectId ?? ''}
-          onChange={e => setProjectId(Number(e.target.value))}
+          onChange={e => handleProjectChange(Number(e.target.value))} /* 🚀 Se usa la nueva función */
           className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {allowedProjects.map(p => (
@@ -513,12 +534,12 @@ export function ObservacionesClient({ projects, tenant, role }: {
                   Asignaciones
                 </th>
                 <th
-                  className={thClass('created_by_name', sort)}
-                  onClick={() => handleSort('created_by_name')}
-                  title="Ordenar por usuario"
-                >
-                  Registrado por <SortIcon col="created_by_name" sort={sort} />
-                </th>
+  className={thClass('created_at', sort)}
+  onClick={() => handleSort('created_at')}
+  title="Ordenar por fecha de registro"
+>
+  Registro <SortIcon col="created_at" sort={sort} />
+</th>
                 <th className="px-3 py-3"></th>
               </tr>
             </thead>
@@ -570,7 +591,10 @@ export function ObservacionesClient({ projects, tenant, role }: {
                       </span>
                     ) : '—'}
                   </td>
-                  <td className="px-3 py-3 text-xs text-gray-500">{item.created_by_name ?? '—'}</td>
+                  <td className="px-3 py-3 text-xs whitespace-nowrap">
+  <span className="font-medium text-gray-700 block">{item.created_by_name ?? '—'}</span>
+  <span className="text-[10px] text-gray-400 block mt-0.5">{fmtDate(item.created_at)}</span>
+</td>
                   <td className="px-3 py-3">
                     <div className="flex gap-2 justify-end">
                       {canEdit && (
