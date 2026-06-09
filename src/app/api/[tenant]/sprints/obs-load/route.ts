@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { query } from '@/lib/db'; // 🚀 1. Le quitamos los "//" para activar la importación
+import { query } from '@/lib/db'; 
 
 export async function GET(req: Request, { params }: { params: { tenant: string } }) {
   try {
@@ -11,16 +11,13 @@ export async function GET(req: Request, { params }: { params: { tenant: string }
       return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 });
     }
 
-    // Adaptar según tu lógica para obtener el tenant_id numérico. 
-    // Si tu sistema actualmente quema el 1, déjalo así por ahora.
-    const tenantId = 1; 
-
-    // 🚀 2. Ahora 'query' funcionará correctamente
-    const rows = await query('CALL project_manager.sp_sprint_obs_load(?, ?, ?)', [
-      tenantId,
+    // 🚀 Llamamos al SP solo con Project ID y Sprint Num (sin el tenant)
+    const rows: any = await query('CALL project_manager.sp_sprint_obs_load(?, ?)', [
       Number(projectId),
       Number(sprintNum)
     ]);
+
+    // console.log("Carga de devs obtenida:", rows[0]); // Descomenta esto si quieres ver la data en tu consola
 
     return NextResponse.json({ data: rows[0] });
   } catch (error) {
