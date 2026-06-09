@@ -81,6 +81,21 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [showItemForm, setShowItemForm]     = useState(false)
   const [viewComment, setViewComment]       = useState<{ code: string; comment: string } | null>(null)
 
+  // 🚀 1. Nuevo estado para almacenar la carga de observaciones
+  const [obsLoad, setObsLoad] = useState<{name: string, count: number}[]>([])
+
+  // 🚀 2. Función para solicitar la data al nuevo endpoint
+  const fetchObsLoad = useCallback(async (sprintNum: number) => {
+    if (!projectId) return
+    try {
+      const res = await fetch(`/api/${tenant}/sprints/obs-load?projectId=${projectId}&sprintNum=${sprintNum}`)
+      const json = await res.json()
+      setObsLoad(json.data ?? [])
+    } catch { 
+      setObsLoad([]) 
+    }
+  }, [projectId, tenant])
+
   const currentProject = allowedProjects.find(p => p.id === projectId)
   const canManageSprint = role !== 'desarrollador' && (role === 'super_admin' || Number(currentProject?.is_member) > 0)
   const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
@@ -148,10 +163,14 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
       await fetchTechCols()
       const active = await fetchSprints()
       await fetchItems(active)
+      // 🚀 3. Llamamos a la carga de obs solo si hay un sprint activo
+      if (active) {
+        await fetchObsLoad(active.number)
+      }
       setIsPageLoading(false)
     }
     loadAll()
-  }, [projectId, tenant])
+  }, [projectId, tenant]) // Mantén tus dependencias actuales
 
   useEffect(() => { fetchItems() }, [statusFilters])
 
@@ -270,6 +289,26 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                   </div>
                 )}
               </div>
+
+{/* 🚀 4. NUEVA SECCIÓN: Carga de observaciones por desarrollador */}
+              {obsLoad.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
+                    Carga de Observaciones Activas (Por Desarrollador)
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {obsLoad.map(dev => (
+                      <div key={dev.name} className="flex items-center gap-2 bg-orange-50 border border-orange-200 px-2 py-1 rounded shadow-sm">
+                        <span className="font-medium text-xs text-orange-800">{dev.name}</span>
+                        <span className="bg-orange-500 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                          {dev.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             </div>
             <div className="text-right min-w-40 flex flex-col gap-4 border-l pl-5 border-gray-100">
@@ -510,6 +549,13 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             setShowSprintForm(false)
             const active = await fetchSprints()
             fetchItems(active)
+            
+            // 🚀 AQUÍ ESTÁ LA MAGIA: Actualizar observaciones sin recargar la página
+            if (active) {
+              fetchObsLoad(active.number)
+            } else {
+              setObsLoad([]) // Limpiar si se cancelaron todos los sprints
+            }
           }}
         />
       )}
@@ -671,7 +717,7 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
                 <option value="completado">Completado</option>
                 <option value="bloqueado">Bloqueado</option>
               </select>
-            </div>
+            </div>-
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Avance %</label>
               <input type="number" min={0} max={100}

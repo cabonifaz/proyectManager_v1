@@ -401,6 +401,19 @@ export function ObservacionesClient({ projects, tenant, role }: {
       )
     : backlogItems
 
+
+    // 🚀 Diccionario para nombres amigables en el ordenamiento
+  const SORT_LABELS: Record<string, string> = {
+    tipo: 'Tipo',
+    prioridad: 'Prioridad',
+    titulo: 'Título',
+    estado: 'Estado',
+    eta: 'ETA',
+    entregado_at: 'Fecha de entrega',
+    created_by_name: 'Registrado por',
+    created_at: 'Fecha de registro'
+  };
+
   // ── RENDER ────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -451,7 +464,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
         {/* Indicador de ordenamiento activo */}
         {sort.key && (
           <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded">
-            Orden: <strong>{sort.key}</strong> {sort.dir === 'asc' ? '▲' : '▼'}
+            Orden: <strong>{SORT_LABELS[sort.key] ?? sort.key}</strong> {sort.dir === 'asc' ? '▲' : '▼'}
             <button
               onClick={() => setSort({ key: null, dir: 'asc' })}
               className="ml-1 text-blue-400 hover:text-blue-700 font-bold"
@@ -551,15 +564,13 @@ export function ObservacionesClient({ projects, tenant, role }: {
                       {TIPO_LABELS[item.tipo]}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold ${
-                      item.prioridad >= 8 ? 'bg-red-100 text-red-700' :
-                      item.prioridad >= 4 ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-green-100 text-green-700'
-                    }`}>
-                      Prio: {item.prioridad}
-                    </span>
-                  </td>
+                  <td className="px-3 py-3 text-xs font-medium text-gray-600">
+  {['resuelta', 'cerrada'].includes(item.estado) ? (
+    <span className="text-gray-300 font-normal">—</span>
+  ) : (
+    <span>Prio: {item.prioridad}</span>
+  )}
+</td>
                   <td className="px-3 py-3 max-w-xs">
                     <button
                       onClick={() => openDetail(item)}

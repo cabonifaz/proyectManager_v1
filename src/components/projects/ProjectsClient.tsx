@@ -17,6 +17,8 @@ interface Project {
   avg_progress: number
   completion_pct: number
   is_member: number
+  obs_total: number       // 🚀 Agregado
+  obs_completadas: number // 🚀 Agregado
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -326,6 +328,51 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBacklog, onEdit, on
           {p.completion_pct}% ({p.completed_backlog}/{p.total_backlog})
         </span>
       </div>
+
+      {/* 🚀 NUEVA SECCIÓN: Avance de Observaciones */}
+      {(() => {
+        const obsTotal       = Number(p.obs_total) || 0;
+        const obsCompletadas = Number(p.obs_completadas) || 0;
+        const obsPct         = obsTotal > 0 ? Math.round((obsCompletadas / obsTotal) * 100) : 0;
+        const obsAbiertas    = obsTotal - obsCompletadas;
+
+        return (
+          <div className="mt-2 pt-3 border-t border-gray-100 space-y-1">
+            {obsTotal > 0 ? (
+              <>
+                <div className="flex justify-between items-end mb-1">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    Resolución de Obs.
+                  </span>
+                  <span className="text-sm font-bold text-orange-400">
+                    {obsPct}%
+                  </span>
+                </div>
+                
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div 
+                    className="bg-orange-400 h-1.5 rounded-full transition-all duration-500" 
+                    style={{ width: `${obsPct}%` }} 
+                  />
+                </div>
+                
+                <div className="flex justify-between text-[10px] mt-1 text-gray-400">
+                  <span>{obsCompletadas} de {obsTotal} resueltas</span>
+                  <span className="text-orange-600 font-bold">
+                    {obsAbiertas} abierta{obsAbiertas !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between items-center text-[10px] text-gray-400 italic">
+                <span className="uppercase font-bold tracking-widest">Resolución de Obs.</span>
+                <span>Sin observaciones</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      {/* FIN SECCIÓN OBSERVACIONES */}
 
       <div className="text-xs text-gray-400 space-y-0.5">
         {p.manager_name && <p>Gestor: {p.manager_name}</p>}
