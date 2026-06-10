@@ -14,7 +14,7 @@ interface Observacion {
   prioridad: number
   titulo: string
   descripcion: string | null
-  estado: 'abierta' | 'en_seguimiento' | 'resuelta' | 'cerrada'
+  estado: 'abierta' | 'asignado' | 'en_seguimiento' | 'resuelta' | 'cerrada' // 🚀 Agregado 'asignado'
   eta: string | null
   entregado_at: string | null
   created_by: number
@@ -141,13 +141,14 @@ const TIPO_STYLES: Record<Observacion['tipo'], string> = {
 
 const ESTADO_STYLES: Record<Observacion['estado'], string> = {
   abierta:        'bg-gray-100 text-gray-700',
+  asignado:       'bg-purple-100 text-purple-700', // 🚀 Agregado color
   en_seguimiento: 'bg-blue-100 text-blue-700',
   resuelta:       'bg-green-100 text-green-700',
   cerrada:        'bg-gray-200 text-gray-500',
 }
 
 const TIPO_LABELS: Record<Observacion['tipo'], string>     = { riesgo:'Riesgo', bloqueo:'Bloqueo', mejora:'Mejora', nota:'Nota' }
-const ESTADO_LABELS: Record<Observacion['estado'], string> = { abierta:'Abierta', en_seguimiento:'En seguimiento', resuelta:'Resuelta', cerrada:'Cerrada' }
+const ESTADO_LABELS: Record<Observacion['estado'], string> = { abierta:'Abierta', asignado: 'Asignado', en_seguimiento:'En seguimiento', resuelta:'Resuelta', cerrada:'Cerrada' }
 
 const EMPTY_FORM: FormData = {
   tipo:'nota', prioridad: 5, titulo:'', descripcion:'', estado:'abierta',
@@ -160,7 +161,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
 }) {
   const allowedProjects = projects.filter(p => role === 'super_admin' || Number(p.is_member) > 0)
 
-  // 🚀 1. Iniciamos en null para leer la memoria local
+  // 1. Iniciamos en null para leer la memoria local
   const [projectId, setProjectId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -177,7 +178,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
     if (defaultId) localStorage.setItem('pm_selected_project', String(defaultId));
   }, [allowedProjects]);
 
-  // 🚀 2. Función para guardar el cambio de proyecto en memoria
+  // 2. Función para guardar el cambio de proyecto en memoria
   const handleProjectChange = (newId: number) => {
     setProjectId(newId);
     localStorage.setItem('pm_selected_project', String(newId));
@@ -332,6 +333,16 @@ export function ObservacionesClient({ projects, tenant, role }: {
 
   async function handleSave() {
     if (!form.titulo.trim()) { setFormError('El título es obligatorio'); return }
+    
+    // 🚀 VALIDACIÓN: Regla estricta para el estado "Asignado"
+    if (form.estado === 'asignado') {
+      const tieneAsignacion = techCols.some(tc => asignMap[tc.id] != null && asignMap[tc.id] !== '');
+      if (!tieneAsignacion) {
+        setFormError('Para usar el estado "Asignado", debes seleccionar al menos un responsable en tecnología.');
+        return;
+      }
+    }
+
     if (!projectId) return
     setSaving(true); setFormError('')
     try {
@@ -402,7 +413,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
     : backlogItems
 
 
-    // 🚀 Diccionario para nombres amigables en el ordenamiento
+    // Diccionario para nombres amigables en el ordenamiento
   const SORT_LABELS: Record<string, string> = {
     tipo: 'Tipo',
     prioridad: 'Prioridad',
@@ -421,7 +432,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
       <div className="flex flex-wrap gap-3 items-center">
         <select
           value={projectId ?? ''}
-          onChange={e => handleProjectChange(Number(e.target.value))} /* 🚀 Se usa la nueva función */
+          onChange={e => handleProjectChange(Number(e.target.value))}
           className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {allowedProjects.map(p => (
@@ -448,6 +459,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
         >
           <option value="">Todos los estados</option>
           <option value="abierta">Abierta</option>
+          <option value="asignado">Asignado</option> {/* 🚀 Opción agregada */}
           <option value="en_seguimiento">En seguimiento</option>
           <option value="resuelta">Resuelta</option>
           <option value="cerrada">Cerrada</option>
@@ -498,8 +510,11 @@ export function ObservacionesClient({ projects, tenant, role }: {
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
+             <tr>
                 {/* ── Encabezados clicables ── */}
+                <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">
+                  Código
+                </th>
                 <th
                   className={thClass('tipo', sort)}
                   onClick={() => handleSort('tipo')}
@@ -542,47 +557,51 @@ export function ObservacionesClient({ projects, tenant, role }: {
                 >
                   Entregado <SortIcon col="entregado_at" sort={sort} />
                 </th>
-                {/* Asignaciones no tiene valor ordenable directo — se deja sin sort */}
                 <th className="text-left px-3 py-3 font-medium text-gray-600 whitespace-nowrap">
                   Asignaciones
                 </th>
                 <th
-  className={thClass('created_at', sort)}
-  onClick={() => handleSort('created_at')}
-  title="Ordenar por fecha de registro"
->
-  Registro <SortIcon col="created_at" sort={sort} />
-</th>
+                  className={thClass('created_at', sort)}
+                  onClick={() => handleSort('created_at')}
+                  title="Ordenar por fecha de registro"
+                >
+                  Registro <SortIcon col="created_at" sort={sort} />
+                </th>
                 <th className="px-3 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sortedItems.map(item => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      #{item.id}
+                    </span>
+                  </td>
                   <td className="px-3 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${TIPO_STYLES[item.tipo]}`}>
                       {TIPO_LABELS[item.tipo]}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-xs font-medium text-gray-600">
-  {['resuelta', 'cerrada'].includes(item.estado) ? (
-    <span className="text-gray-300 font-normal">—</span>
-  ) : (
-    <span>Prio: {item.prioridad}</span>
-  )}
-</td>
+                    {['resuelta', 'cerrada'].includes(item.estado) ? (
+                      <span className="text-gray-300 font-normal">—</span>
+                    ) : (
+                      <span>Prio: {item.prioridad}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-3 max-w-xs">
-  <button
-    onClick={() => openDetail(item)}
-    title={item.titulo} /* 🚀 Agregamos el tooltip nativo aquí */
-    className="text-left font-medium text-gray-800 hover:text-blue-600 transition-colors line-clamp-1 cursor-help"
-  >
-    {item.titulo}
-  </button>
-  {item.backlog_code && (
-    <span className="text-xs text-gray-400 ml-1 block mt-0.5">#{item.backlog_code}</span>
-  )}
-</td>
+                    <button
+                      onClick={() => openDetail(item)}
+                      title={item.titulo}
+                      className="text-left font-medium text-gray-800 hover:text-blue-600 transition-colors line-clamp-1 cursor-help"
+                    >
+                      {item.titulo}
+                    </button>
+                    {item.backlog_code && (
+                      <span className="text-xs text-gray-400 ml-1 block mt-0.5">#{item.backlog_code}</span>
+                    )}
+                  </td>
                   <td className="px-3 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${ESTADO_STYLES[item.estado]}`}>
                       {ESTADO_LABELS[item.estado]}
@@ -604,9 +623,9 @@ export function ObservacionesClient({ projects, tenant, role }: {
                     ) : '—'}
                   </td>
                   <td className="px-3 py-3 text-xs whitespace-nowrap">
-  <span className="font-medium text-gray-700 block">{item.created_by_name ?? '—'}</span>
-  <span className="text-[10px] text-gray-400 block mt-0.5">{fmtDate(item.created_at)}</span>
-</td>
+                    <span className="font-medium text-gray-700 block">{item.created_by_name ?? '—'}</span>
+                    <span className="text-[10px] text-gray-400 block mt-0.5">{fmtDate(item.created_at)}</span>
+                  </td>
                   <td className="px-3 py-3">
                     <div className="flex gap-2 justify-end">
                       {canEdit && (
@@ -672,6 +691,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="abierta">Abierta</option>
+                    <option value="asignado">Asignado</option> {/* 🚀 Opción agregada */}
                     <option value="en_seguimiento">En seguimiento</option>
                     <option value="resuelta">Resuelta</option>
                     <option value="cerrada">Cerrada</option>
@@ -720,24 +740,23 @@ export function ObservacionesClient({ projects, tenant, role }: {
                 <div ref={backlogRef} className="relative">
                   <label className="block text-xs font-medium text-gray-700 mb-1">Ítem Backlog</label>
                   {selectedBacklogItem && !backlogOpen ? (
-  <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50">
-    <div className="flex flex-col overflow-hidden">
-      <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
-      {/* 🚀 Añadimos el title aquí para mostrar el texto completo al hacer hover */}
-      <span 
-        title={selectedBacklogItem.description} 
-        className="truncate text-gray-800 font-medium cursor-help"
-      >
-        {selectedBacklogItem.description}
-      </span>
-    </div>
-    <button
-      type="button"
-      onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
-      className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
-    >×</button>
-  </div>
-) : (
+                    <div className="flex items-center justify-between w-full border rounded px-4 py-2.5 text-sm bg-gray-50">
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="font-bold text-blue-700 text-xs">{selectedBacklogItem.code}</span>
+                        <span 
+                          title={selectedBacklogItem.description} 
+                          className="truncate text-gray-800 font-medium cursor-help"
+                        >
+                          {selectedBacklogItem.description}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setForm(f => ({ ...f, backlogItemId: '' })); setBacklogSearch('') }}
+                        className="text-gray-400 hover:text-red-500 ml-3 p-1 shrink-0 transition-colors"
+                      >×</button>
+                    </div>
+                  ) : (
                     <input
                       type="text" value={backlogSearch}
                       onChange={e => { setBacklogSearch(e.target.value); setBacklogOpen(true) }}
@@ -752,22 +771,21 @@ export function ObservacionesClient({ projects, tenant, role }: {
                         <div className="px-4 py-3 text-gray-400 text-xs">Sin resultados</div>
                       ) : (
                         filteredBacklog.slice(0, 50).map(b => (
-                          // Dentro del .map() de filteredBacklog
-<button
-  key={b.id}
-  type="button"
-  onMouseDown={e => e.preventDefault()}
-  onClick={() => {
-    setForm(f => ({ ...f, backlogItemId: String(b.id) }))
-    setBacklogSearch('')
-    setBacklogOpen(false)
-  }}
-  className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors"
-  title={b.description} // 🚀 Añadimos title al botón completo para toda la fila
->
-  <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span>
-  <span className="text-gray-700 leading-tight">{b.description}</span>
-</button>
+                          <button
+                            key={b.id}
+                            type="button"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => {
+                              setForm(f => ({ ...f, backlogItemId: String(b.id) }))
+                              setBacklogSearch('')
+                              setBacklogOpen(false)
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b last:border-b-0 flex gap-4 items-start transition-colors"
+                            title={b.description}
+                          >
+                            <span className="font-bold text-blue-700 shrink-0 w-24">{b.code}</span>
+                            <span className="text-gray-700 leading-tight">{b.description}</span>
+                          </button>
                         ))
                       )}
                     </div>
