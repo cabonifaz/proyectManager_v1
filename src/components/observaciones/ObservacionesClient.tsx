@@ -37,7 +37,7 @@ type AsignMap = Record<number, string | null>
 
 type FormData = {
   tipo: Observacion['tipo']
-  prioridad: Observacion['prioridad']
+  prioridad: number | string // 🚀 Acepta string para poder estar vacío
   titulo: string
   descripcion: string
   estado: Observacion['estado']
@@ -76,15 +76,31 @@ function thClass(col: SortKey, sort: SortState) {
 }
 
 /** Compara dos valores de Observacion para ordenar */
+/** Compara dos valores de Observacion para ordenar */
+/** Compara dos valores de Observacion para ordenar */
 function compareObs(a: Observacion, b: Observacion, key: SortKey, dir: SortDir): number {
+  // 🚀 1. LÓGICA EXCLUSIVA PARA PRIORIDAD
+  if (key === 'prioridad') {
+    // TRUCO: Si está resuelta/cerrada, la UI muestra un guion "—".
+    // Le decimos al ordenamiento que las trate como un 0 para tirarlas al fondo.
+    const prioA = ['resuelta', 'cerrada'].includes(a.estado) ? 0 : (Number(a.prioridad) || 0);
+    const prioB = ['resuelta', 'cerrada'].includes(b.estado) ? 0 : (Number(b.prioridad) || 0);
+
+    // Los Ceros y guiones siempre al fondo, sin importar si ordenas ASC o DESC
+    if (prioA === 0 && prioB > 0) return 1;
+    if (prioB === 0 && prioA > 0) return -1;
+    if (prioA === 0 && prioB === 0) return 0;
+
+    // Si ambos son números válidos (activos), los ordena
+    const result = prioA - prioB;
+    return dir === 'asc' ? result : -result;
+  }
+
+  // 2. LÓGICA NORMAL PARA EL RESTO DE COLUMNAS
   let valA: string | number | null
   let valB: string | number | null
 
   switch (key) {
-    case 'prioridad':
-      valA = a.prioridad
-      valB = b.prioridad
-      break
     case 'eta':
       valA = a.eta ?? ''
       valB = b.eta ?? ''
@@ -117,7 +133,7 @@ function compareObs(a: Observacion, b: Observacion, key: SortKey, dir: SortDir):
       return 0
   }
 
-  // Nulos/vacíos siempre al fondo
+  // Nulos/vacíos siempre al fondo para textos
   if (valA === '' && valB !== '') return 1
   if (valB === '' && valA !== '') return -1
 
@@ -151,7 +167,7 @@ const TIPO_LABELS: Record<Observacion['tipo'], string>     = { riesgo:'Riesgo', 
 const ESTADO_LABELS: Record<Observacion['estado'], string> = { abierta:'Abierta', asignado: 'Asignado', en_seguimiento:'En seguimiento', resuelta:'Resuelta', cerrada:'Cerrada' }
 
 const EMPTY_FORM: FormData = {
-  tipo:'nota', prioridad: 5, titulo:'', descripcion:'', estado:'abierta',
+  tipo:'nota', prioridad: '', titulo:'', descripcion:'', estado:'abierta', // 🚀 Inicia vacío
   eta:'', entregadoAt:'', backlogItemId:'',
 }
 
@@ -305,11 +321,11 @@ export function ObservacionesClient({ projects, tenant, role }: {
     setBacklogSearch(''); setBacklogOpen(false); setShowForm(true)
   }
 
-  async function openEdit(item: Observacion) {
+async function openEdit(item: Observacion) {
     setEditItem(item)
     setForm({
       tipo:          item.tipo,
-      prioridad:     item.prioridad,
+      prioridad:     item.prioridad === 0 ? '' : item.prioridad, // 🚀 Si es 0 en BD, lo mostramos vacío
       titulo:        item.titulo,
       descripcion:   item.descripcion ?? '',
       estado:        item.estado,
@@ -346,10 +362,12 @@ export function ObservacionesClient({ projects, tenant, role }: {
     if (!projectId) return
     setSaving(true); setFormError('')
     try {
-      const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/${tenant}/observaciones`
+const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/${tenant}/observaciones`
       const method = editItem ? 'PATCH' : 'POST'
       const body: Record<string, unknown> = {
-        projectId, tipo: form.tipo, prioridad: form.prioridad,
+        projectId, 
+        tipo: form.tipo, 
+        prioridad: form.prioridad === '' ? 0 : Number(form.prioridad), // 🚀 Si está vacío, manda 0 a BD
         titulo:        form.titulo.trim(),
         descripcion:   form.descripcion.trim() || null,
         estado:        form.estado,
@@ -583,8 +601,8 @@ export function ObservacionesClient({ projects, tenant, role }: {
                       {TIPO_LABELS[item.tipo]}
                     </span>
                   </td>
-                  <td className="px-3 py-3 text-xs font-medium text-gray-600">
-                    {['resuelta', 'cerrada'].includes(item.estado) ? (
+<td className="px-3 py-3 text-xs font-medium text-gray-600">
+                    {['resuelta', 'cerrada'].includes(item.estado) || item.prioridad === 0 ? (
                       <span className="text-gray-300 font-normal">—</span>
                     ) : (
                       <span>Prio: {item.prioridad}</span>
@@ -674,12 +692,15 @@ export function ObservacionesClient({ projects, tenant, role }: {
                     <option value="mejora">Mejora</option>
                   </select>
                 </div>
-                <div>
+<div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Prioridad (1-10)</label>
                   <input
                     type="number" min="1" max="10"
                     value={form.prioridad}
-                    onChange={e => setForm(f => ({ ...f, prioridad: Number(e.target.value) }))}
+                    onChange={e => setForm(f => ({ 
+                      ...f, 
+                      prioridad: e.target.value === '' ? '' : Number(e.target.value) 
+                    }))}
                     className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

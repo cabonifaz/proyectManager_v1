@@ -49,45 +49,66 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
         slug:     { label: 'Empresa',  type: 'text' },
       },
-      async authorize(credentials) {
+     async authorize(credentials) {
+        console.log("\n🚨 [AUTH START] Credenciales recibidas desde el formulario:", credentials)
+
         if (!credentials?.email || !credentials?.password || !credentials?.slug) {
+          console.log("❌ [AUTH ERROR] Faltan datos en el objeto credentials")
           throw new Error('Credenciales incompletas')
         }
 
-        const [user] = await query<UserRow>(
-          `SELECT u.id, u.tenant_id, t.slug AS tenant_slug,
-                  u.name, u.email, u.password_hash, u.role, u.avatar_url, u.active
-           FROM users u
-           INNER JOIN tenants t ON t.id = u.tenant_id
-           WHERE u.email      = ?
-             AND t.slug       = ?
-             AND u.deleted_at IS NULL
-             AND t.deleted_at IS NULL
-             AND t.active     = 1
-           LIMIT 1`,
-          [credentials.email.toLowerCase(), credentials.slug],
-        )
+        try {
+          const usuariosEncontrados = await query<UserRow>(
+            `SELECT u.id, u.tenant_id, t.slug AS tenant_slug,
+                    u.name, u.email, u.password_hash, u.role, u.avatar_url, u.active
+             FROM users u
+             INNER JOIN tenants t ON t.id = u.tenant_id
+             WHERE u.email      = ?
+               AND t.slug       = ?
+               AND u.deleted_at IS NULL
+               AND t.deleted_at IS NULL
+               AND t.active     = 1
+             LIMIT 1`,
+            [credentials.email.toLowerCase(), credentials.slug],
+          )
 
-        if (!user)       throw new Error('Usuario o empresa no encontrados')
-        if (!user.active) throw new Error('Usuario inactivo')
+          console.log("🔍 [AUTH DB RESULT] Filas encontradas en la BD:", usuariosEncontrados.length)
+          const user = usuariosEncontrados[0]
 
-        const valid = await bcrypt.compare(credentials.password, user.password_hash)
-        if (!valid) throw new Error('Contraseña incorrecta')
+          if (!user) {
+            console.log("❌ [AUTH ERROR] Usuario no encontrado. Motivos posibles: email incorrecto, t.active = NULL/0, o el credentials.slug no hace match exacto.")
+            throw new Error('Usuario o empresa no encontrados')
+          }
+          if (!user.active) {
+            console.log("❌ [AUTH ERROR] El usuario está en la BD pero su campo active es 0 o NULL")
+            throw new Error('Usuario inactivo')
+          }
 
-        query(
-          `UPDATE users SET last_login = CURRENT_TIMESTAMP, updated_by = id WHERE id = ?`,
-          [user.id],
-        ).catch(() => {})
+          const valid = await bcrypt.compare(credentials.password, user.password_hash)
+          console.log("🔐 [AUTH BCRYPT] ¿La contraseña coincide?:", valid)
+          
+          if (!valid) throw new Error('Contraseña incorrecta')
 
-        return {
-          id:            String(user.id),
-          tenantId:      user.tenant_id,
-          tenantSlug:    user.tenant_slug,
-          encryptedSlug: encryptSlug(user.tenant_slug),
-          name:          user.name,
-          email:         user.email,
-          role:          user.role,
-          avatarUrl:     user.avatar_url,
+          query(
+            `UPDATE users SET last_login = CURRENT_TIMESTAMP, updated_by = id WHERE id = ?`,
+            [user.id],
+          ).catch(() => {})
+
+          console.log("✅ [AUTH SUCCESS] Login aprobado para:", user.email)
+          
+          return {
+            id:            String(user.id),
+            tenantId:      user.tenant_id,
+            tenantSlug:    user.tenant_slug,
+            encryptedSlug: encryptSlug(user.tenant_slug),
+            name:          user.name,
+            email:         user.email,
+            role:          user.role,
+            avatarUrl:     user.avatar_url,
+          }
+        } catch (error) {
+          console.log("🚨 [AUTH FATAL ERROR] Excepción capturada en el servidor:", error)
+          throw error
         }
       },
     }),

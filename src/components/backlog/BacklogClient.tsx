@@ -70,12 +70,15 @@ export function BacklogClient({ projects, tenant, role }: {
   const [fetchError, setFetchError]       = useState('')
   const [search, setSearch]               = useState('')
   const [statusFilter, setStatus]         = useState('')
-  const [sprintFilter, setSprint]         = useState('')
+const [sprintFilter, setSprint]         = useState('')
   const [showForm, setShowForm]           = useState(false)
   const [editItem, setEditItem]           = useState<BacklogItem | null>(null)
   const [showColConfig, setShowColConfig] = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [viewComment, setViewComment]     = useState<{ code: string; comment: string } | null>(null)
+  
+  // 🚀 ESTADO NUEVO AQUÍ:
+  const [checklistOpen, setChecklistOpen] = useState<BacklogItem | null>(null)
 
   // 👇 Hook del Contexto Global para la importación en segundo plano
   const { startBackgroundImport } = useImport()
@@ -406,7 +409,15 @@ export function BacklogClient({ projects, tenant, role }: {
                   )}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
-                  <div className="flex justify-end gap-3">
+                  <div className="flex justify-end gap-3 items-center">
+                    {/* 🚀 BOTÓN NUEVO AQUÍ */}
+                    <button
+                      onClick={() => setChecklistOpen(item)}
+                      className="text-indigo-600 hover:text-indigo-800 text-[10px] font-bold uppercase transition-colors"
+                    >
+                       Tareas
+                    </button>
+
                     {canEdit && (
                       <button
                         onClick={() => { setEditItem(item); setShowForm(true) }}
@@ -522,6 +533,17 @@ export function BacklogClient({ projects, tenant, role }: {
           </div>
         </div>
       )}
+
+      
+ {/* 🚀 RENDERIZADO DEL NUEVO MODAL AQUÍ */}
+      {checklistOpen && (
+        <ChecklistManagerModal
+          tenant={tenant}
+          item={checklistOpen}
+          onClose={() => { setChecklistOpen(null); fetchItems(); }}
+        />
+      )}
+
     </div>
   )
 }
@@ -814,6 +836,99 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal de Gestión de Tareas (Checklist) ──────────────────────────────────
+function ChecklistManagerModal({ tenant, item, onClose }: { tenant: string, item: BacklogItem, onClose: () => void }) {
+  const [tasks, setTasks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [desc, setDesc] = useState('')
+  const [peso, setPeso] = useState<number | ''>('')
+  const [saving, setSaving] = useState(false)
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
+      const json = await res.json()
+      setTasks(json.data ?? [])
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [tenant, item.id])
+
+  useEffect(() => { fetchTasks() }, [fetchTasks])
+
+  const totalPeso = tasks.reduce((sum, t) => sum + Number(t.peso), 0)
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!desc.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descripcion: desc, peso: Number(peso) || 0 })
+      })
+      if (res.ok) { setDesc(''); setPeso(''); fetchTasks() }
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
+  async function handleDelete(taskId: number) {
+    try {
+      await fetch(`/api/${tenant}/backlog/tasks/${taskId}`, { method: 'DELETE' })
+      fetchTasks()
+    } catch (e) { console.error(e) }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+          <div>
+            <h2 className="font-bold text-gray-800 text-lg">Gestionar Tareas (Checklist)</h2>
+            <p className="text-xs text-blue-600 font-mono mt-0.5 font-bold uppercase tracking-widest">{item.code}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+
+        <div className="p-6 bg-gray-50 border-b shrink-0">
+          <form onSubmit={handleAdd} className="flex gap-2">
+            <input required type="text" placeholder="Descripción de la nueva tarea..." value={desc} onChange={e => setDesc(e.target.value)} className="flex-1 border rounded px-3 py-2 text-sm outline-none focus:border-blue-500" />
+            <input type="number" min="0" max="100" placeholder="Peso %" value={peso} onChange={e => setPeso(e.target.value === '' ? '' : Number(e.target.value))} className="w-20 border rounded px-2 py-2 text-sm outline-none focus:border-blue-500" title="Peso opcional (0-100)" />
+            <button type="submit" disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 disabled:opacity-50">
+              {saving ? '...' : '+ Añadir'}
+            </button>
+          </form>
+          {totalPeso > 100 && <p className="text-xs text-red-600 font-bold mt-2 flex items-center gap-1"><span className="text-sm">⚠️</span> Advertencia: La suma de pesos ({totalPeso}%) supera el 100%.</p>}
+          {totalPeso === 0 && tasks.length > 0 && <p className="text-[10px] text-gray-500 mt-2 font-bold uppercase tracking-widest flex items-center gap-1"><span className="text-sm">ℹ️</span> Tareas sin peso. El avance se calculará equitativamente ({Math.round(100/tasks.length)}% c/u).</p>}
+        </div>
+
+        <div className="px-6 py-4 overflow-y-auto bg-white flex-1">
+          <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+            Tareas Registradas ({tasks.length})
+          </p>
+          {loading ? <p className="text-center text-sm text-gray-400 py-6">Cargando tareas...</p> : tasks.length === 0 ? <p className="text-center text-sm text-gray-400 italic py-6">No hay tareas registradas para este ticket.</p> : (
+            <div className="space-y-2">
+              {tasks.map(t => (
+                <div key={t.id} className="flex items-center justify-between bg-white border border-gray-100 p-3 rounded-lg shadow-sm hover:border-blue-200 transition-colors">
+                  <span className="text-sm text-gray-700 font-medium flex-1 pr-4">{t.descripcion}</span>
+                  <div className="flex items-center gap-4">
+                    {t.peso > 0 ? (
+                       <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded">Peso: {t.peso}%</span>
+                    ) : (
+                       <span className="text-xs font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded">Sin peso</span>
+                    )}
+                    <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors" title="Eliminar tarea">×</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

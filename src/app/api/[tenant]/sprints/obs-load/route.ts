@@ -11,13 +11,11 @@ export async function GET(req: Request, { params }: { params: { tenant: string }
       return NextResponse.json({ error: 'Faltan parámetros' }, { status: 400 });
     }
 
-    // 🚀 Llamamos al SP solo con Project ID y Sprint Num (sin el tenant)
-    const rows: any = await query('CALL project_manager.sp_sprint_obs_load(?, ?)', [
+    // 🚀 CORRECCIÓN: Quitamos 'project_manager.' para que respete el entorno actual (Staging o Prod)
+    const rows: any = await query('CALL sp_sprint_obs_load(?, ?)', [
       Number(projectId),
       Number(sprintNum)
     ]);
-
-    // console.log("Carga de devs obtenida:", rows[0]); // Descomenta esto si quieres ver la data en tu consola
 
     return NextResponse.json({ data: rows[0] });
   } catch (error) {

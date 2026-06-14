@@ -32,7 +32,7 @@ function normalizeObsStatus(val: string): string {
   return 'abierta';
 }
 
-// NUEVO: Traductor de prioridad para Observaciones (Devuelve números)
+// Traductor de prioridad para garantizar que siempre se envíe un TINYINT válido a la BD
 function normalizeObsPriority(val: any): number {
   if (!val || String(val).trim() === '') return 0;
   
@@ -43,7 +43,6 @@ function normalizeObsPriority(val: any): number {
     return Math.round(num);
   }
   
-  // Por si el excel antiguo aún dice "alta", "media", "baja"
   const strVal = String(val).toLowerCase().trim();
   if (strVal.includes('alta') || strVal.includes('critica')) return 8;
   if (strVal.includes('media')) return 5;
@@ -96,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     };
 
     extractHeaders(backlogRows);
-    extractHeaders(sprintRows); // Agregado para buscar también en sprints
+    extractHeaders(sprintRows);
     extractHeaders(obsRows);
 
     let techCols = await query<ColRow>(
@@ -128,11 +127,9 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     // ── FASE 1: CREAR SPRINTS FALTANTES ──
     const allSprintNums = new Set(
       [...backlogRows, ...sprintRows]
-        // 🚀 1. Ignoramos las filas fantasma: solo procesamos las que tengan un código real
         .filter(r => r.codigo && String(r.codigo).trim() !== '')
         .map(r => Number(r.sprint))
-        // 🚀 2. Cambiamos el "n >= 0" por "n > 0" para rechazar definitivamente el 0
-        .filter(n => !isNaN(n) && n > 0)
+        .filter(n => !isNaN(n) && n >= 0) // Permitimos la creación del Sprint 0
     )
     
     if (allSprintNums.size > 0) {
@@ -163,7 +160,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     )
     const existingMap = new Map<string, number>(existingItems.map(i => [i.code.trim().toLowerCase(), i.id]))
 
-    // Mapa para reemplazo de la 'X'
     const sprintDataMap = new Map<string, Record<string, any>>();
     sprintRows.forEach(sr => {
       if (sr.codigo) sprintDataMap.set(String(sr.codigo).trim().toLowerCase(), sr);
@@ -192,7 +188,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       let itemId: number
 
       if (existingId) {
-        // 🚀 CORRECCIÓN 1: Agregamos p_code aquí
         const upd = await callProcedureOut('sp_backlog_update', {
           p_tenant_id: ctx.tenantId, p_item_id: existingId,
           p_code: String(row.codigo).trim(), 
@@ -225,7 +220,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         existingMap.set(codeKey, itemId) 
 
         if (avance !== null) {
-          // 🚀 CORRECCIÓN 2: Agregamos p_code: null aquí
           await callProcedureOut('sp_backlog_update', {
             p_tenant_id: ctx.tenantId, p_item_id: itemId,
             p_code: null, 
@@ -244,25 +238,22 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         try { await query('UPDATE backlog_items SET reg_date=?, created_at=? WHERE id=?', [dateStr, `${dateStr} 12:00:00`, itemId]) } catch (e){}
       }
 
-      // LÓGICA DE REEMPLAZO DE LA "X" EN TECNOLOGÍAS
       for (const col of techCols) {
         const colNameNorm = col.name.toLowerCase().replace(/[\s.]+/g, '_')
         let val = row[col.col_key] ?? row[colNameNorm] ?? row[col.name.toLowerCase()] ?? row[col.name] ?? null
         
         const isX = val !== null && String(val).trim().toLowerCase() === 'x';
 
-        // Si está vacío o es una "X", buscamos en el sprint
         if (!val || String(val).trim() === '' || isX) {
           const sprintMatch = sprintDataMap.get(codeKey);
           if (sprintMatch) {
             const sprintVal = sprintMatch[col.col_key] ?? sprintMatch[colNameNorm] ?? sprintMatch[col.name.toLowerCase()] ?? sprintMatch[col.name] ?? null;
             if (sprintVal && String(sprintVal).trim() !== '') {
-              val = sprintVal; // Tomamos el nombre del sprint
+              val = sprintVal; 
             }
           }
         }
 
-        // Guardamos si hay valor válido (y no es solo una 'x')
         if (val && String(val).trim() !== '' && String(val).trim().toLowerCase() !== 'x') {
           await callProcedureOut('sp_backlog_tech_upsert', {
             p_tenant_id: ctx.tenantId, p_item_id: itemId, p_column_id: col.id,
@@ -288,12 +279,12 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         continue
       }
       try {
-        const priority = row.prioridad || row.prio ? Number(row.prioridad || row.prio) : 0;
+        // 🚀 CORRECCIÓN: Prioridad normalizada estrictamente como número (0-10)
+        const priority = normalizeObsPriority(row.prioridad || row.prio);
         const reviewDate = row.fech_rev || row['fech rev'] ? String(row.fech_rev || row['fech rev']).trim().substring(0, 10) : null;
         const sprintNum = (row.sprint !== undefined && row.sprint !== null && String(row.sprint).trim() !== '') ? Number(row.sprint) : null;
         const sprintComment = row.comentario ? String(row.comentario).trim() : null;
         
-        // 🚀 Extraemos el ETA del Sprint
         const sprintEta = parseDateStr(row.eta);
 
         await query(
@@ -313,16 +304,14 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
             const stat = row.estado ? normalizeStatus(row.estado) : 'pendiente';
 
             if (existingSprintItem.length > 0) {
-              // 🚀 Actualizamos el ETA aquí
               await query(
                 `UPDATE sprint_items SET priority = ?, review_date = ?, eta = ?, updated_by = ?, updated_at = NOW() WHERE id = ?`,
-                [isNaN(priority) ? 0 : priority, reviewDate, sprintEta, ctx.userId, existingSprintItem[0].id]
+                [priority, reviewDate, sprintEta, ctx.userId, existingSprintItem[0].id]
               )
             } else {
-              // 🚀 Insertamos el ETA aquí
               await query(
                 `INSERT INTO sprint_items (sprint_id, backlog_item_id, project_id, code, description, sprint_num, status, priority, review_date, eta, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-                [sprintId, itemId, projectId, String(row.codigo).trim(), desc, sprintNum, stat, isNaN(priority) ? 0 : priority, reviewDate, sprintEta, ctx.userId]
+                [sprintId, itemId, projectId, String(row.codigo).trim(), desc, sprintNum, stat, priority, reviewDate, sprintEta, ctx.userId]
               )
             }
           }
@@ -332,7 +321,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       }
     }
 
-    // ── FASE 4: PROCESAR OBSERVACIONES (Prioridad ignorada) ──
+    // ── FASE 4: PROCESAR OBSERVACIONES ──
     for (const row of obsRows) {
       const rawExcelDescGen = row.descripcion_general || row.descripcion || row['descripción general'] || row['DESCRIPCION GENERAL'] || '';
       const rawExcelComentarios = row.comentario || row.comentarios || row['comentarios'] || row['COMENTARIO'] || '';
@@ -358,55 +347,56 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       const obsTypeInsert = parsedType; 
       
       const obsEta  = parseDateStr(row.eta);
-      
-      const rawRegDate = row.fech_reg || row.reg_date || row.regDate || row['fech reg'] || row['FECH REG'];
-      const dateStr = parseDateStr(rawRegDate)
-      const createdAt = dateStr ? `${dateStr} 12:00:00` : new Date().toISOString().slice(0, 19).replace('T', ' ')
-
-      // Línea 271: Declaramos la prioridad mapeada
       const obsPriority = normalizeObsPriority(row.prioridad || row.prio);
 
-try {
-        let existObs: ExistingItem[] = []
-        let currentObsId = 0;
-        
-        existObs = await query<ExistingItem>(
+      try {
+        const existObs = await query<ExistingItem>(
           `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? LIMIT 1`, 
           [projectId, titleText]
         )
         
+        let currentObsId = 0;
+        
         if (existObs.length > 0) {
           currentObsId = existObs[0].id;
-          // 🚀 ACTUALIZACIÓN SIN PRIORIDAD (Se mantiene el valor que ya tuviera en BD)
-          await query(
-            `UPDATE observaciones 
-             SET titulo=?, descripcion=?, estado=?, backlog_item_id=?, tipo=COALESCE(?, tipo), eta=COALESCE(?, eta), updated_by=?, updated_at=NOW() 
-             WHERE id=?`,
-            [titleText, descText, obsStatus, itemId, obsTypeUpdate, obsEta, ctx.userId, currentObsId]
-          )
+          
+          // 🚀 CORRECCIÓN: Usando tu Procedimiento Almacenado oficial
+          const updRes: any = await callProcedureOut('sp_observacion_update', {
+            p_tenant_id: ctx.tenantId,
+            p_id: currentObsId,
+            p_backlog_item_id: itemId,
+            p_tipo: obsTypeUpdate,
+            p_prioridad: obsPriority,
+            p_titulo: titleText,
+            p_descripcion: descText,
+            p_estado: obsStatus,
+            p_eta: obsEta,
+            p_entregado_at: null,
+            p_updated_by: ctx.userId
+          }, ['p_error'])
+
+          if (updRes.p_error) throw new Error(updRes.p_error);
           results.oUpdated++
         } else {
-          // 🚀 INSERCIÓN CON PRIORIDAD NULA (NULL explícito)
-          const insertRes: any = await query(
-            `INSERT INTO observaciones 
-             (tenant_id, project_id, backlog_item_id, tipo, prioridad, titulo, descripcion, estado, eta, created_by, created_at) 
-             VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
-            [ctx.tenantId, projectId, itemId, obsTypeInsert, titleText, descText, obsStatus, obsEta, ctx.userId, createdAt]
-          )
-          results.oCreated++
-          
-          currentObsId = insertRes?.insertId || 0;
-          
-          if (!currentObsId) {
-            const newObs = await query<ExistingItem>(
-              `SELECT id FROM observaciones WHERE project_id = ? AND titulo = ? ORDER BY id DESC LIMIT 1`, 
-              [projectId, titleText]
-            )
-            if (newObs.length > 0) currentObsId = newObs[0].id;
-          }
-        }
+          // 🚀 CORRECCIÓN: Usando tu Procedimiento Almacenado en lugar del INSERT manual
+          const insRes: any = await callProcedureOut('sp_observacion_create', {
+            p_tenant_id: ctx.tenantId,
+            p_project_id: projectId,
+            p_backlog_item_id: itemId,
+            p_tipo: obsTypeInsert,
+            p_prioridad: obsPriority,
+            p_titulo: titleText,
+            p_descripcion: descText,
+            p_eta: obsEta,
+            p_estado: obsStatus,
+            p_entregado_at: null,
+            p_created_by: ctx.userId
+          }, ['p_new_id', 'p_error'])
 
-        // ... (el código de asignación de responsables se queda igual)
+          if (insRes.p_error) throw new Error(insRes.p_error);
+          currentObsId = insRes.p_new_id as number;
+          results.oCreated++
+        }
 
         if (currentObsId) {
           try {

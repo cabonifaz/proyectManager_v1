@@ -78,8 +78,11 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [statusFilters, setStatusFilters]   = useState<string[]>([])
   const [showSprintForm, setShowSprintForm] = useState(false)
   const [editItem, setEditItem]             = useState<SprintItem | null>(null)
-  const [showItemForm, setShowItemForm]     = useState(false)
+const [showItemForm, setShowItemForm]     = useState(false)
   const [viewComment, setViewComment]       = useState<{ code: string; comment: string } | null>(null)
+
+  // 🚀 NUEVO: Estado para el modal de ejecución del checklist
+  const [checklistExecOpen, setChecklistExecOpen] = useState<SprintItem | null>(null)
 
   // 🚀 1. Nuevo estado para almacenar la carga de observaciones
   const [obsLoad, setObsLoad] = useState<{name: string, count: number}[]>([])
@@ -157,20 +160,26 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
     }
   }, [projectId, activeSprint, statusFilters, tenant])
 
-  useEffect(() => {
+ useEffect(() => {
     async function loadAll() {
       setIsPageLoading(true)
       await fetchTechCols()
       const active = await fetchSprints()
       await fetchItems(active)
-      // 🚀 3. Llamamos a la carga de obs solo si hay un sprint activo
-      if (active) {
-        await fetchObsLoad(active.number)
-      }
       setIsPageLoading(false)
     }
     loadAll()
-  }, [projectId, tenant]) // Mantén tus dependencias actuales
+  }, [projectId, tenant])
+
+  // 🚀 NUEVO: Este useEffect independiente garantiza que cada vez que
+  // el sprint activo cambie, las observaciones se refresquen.
+  useEffect(() => {
+    if (activeSprint) {
+      fetchObsLoad(activeSprint.number)
+    } else {
+      setObsLoad([])
+    }
+  }, [activeSprint, fetchObsLoad])
 
   useEffect(() => { fetchItems() }, [statusFilters])
 
@@ -520,15 +529,24 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                           <span className="text-gray-300">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {canEditItem && (
+<td className="px-3 py-2 whitespace-nowrap">
+                        <div className="flex items-center gap-2 justify-end">
+                          {canEditItem && (
+                            <button
+                              onClick={() => { setEditItem(item); setShowItemForm(true) }}
+                              className="text-blue-600 hover:underline text-xs font-medium"
+                            >
+                              Editar
+                            </button>
+                          )}
+                          {/* 🚀 NUEVO BOTÓN CHECKLIST AQUÍ */}
                           <button
-                            onClick={() => { setEditItem(item); setShowItemForm(true) }}
-                            className="text-blue-600 hover:underline text-xs"
+                            onClick={() => setChecklistExecOpen(item)}
+                            className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-xs transition-colors font-medium whitespace-nowrap"
                           >
-                            Editar
+                             Checklist
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -591,6 +609,16 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           </div>
         </div>
+      )}
+
+{/* 🚀 RENDERIZADO DEL NUEVO MODAL AQUÍ */}
+      {checklistExecOpen && (
+        <ChecklistExecutionModal
+          tenant={tenant}
+          item={checklistExecOpen}
+          onClose={() => setChecklistExecOpen(null)}
+          onUpdated={() => fetchItems(activeSprint)} /* Recalcula la barra de progreso al cerrar/marcar */
+        />
       )}
     </div>
   )
@@ -986,6 +1014,98 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: {
               </button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Modal de Ejecución de Tareas (Sprint) ───────────────────────────────────
+function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant: string, item: SprintItem, onClose: () => void, onUpdated: () => void }) {
+  const [tasks, setTasks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
+      const json = await res.json()
+      setTasks(json.data ?? [])
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [tenant, item.id])
+
+  useEffect(() => { fetchTasks() }, [fetchTasks])
+
+  async function handleToggle(taskId: number, currentStatus: number) {
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    // Actualización optimista para que la UI se sienta instantánea
+    setTasks(prev => prev.map(t => t.id === taskId ? { 
+      ...t, 
+      completado: newStatus, 
+      completado_at: newStatus === 1 ? new Date().toISOString() : null 
+    } : t));
+    
+    try {
+      await fetch(`/api/${tenant}/backlog/tasks/${taskId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completado: newStatus })
+      })
+      onUpdated(); // Le avisa al componente padre que hubo un cambio para refrescar la barra de progreso
+    } catch (e) { 
+      fetchTasks(); // Si falla la red, regresa al estado original
+    }
+  }
+
+  function fmtTime(iso: string) {
+    return new Date(iso).toLocaleString('es-ES', { 
+      day: '2-digit', month: '2-digit', year: 'numeric', 
+      hour: '2-digit', minute: '2-digit' 
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-indigo-50 shrink-0">
+          <div>
+            <h2 className="font-bold text-indigo-900 text-lg">Ejecución de Checklist</h2>
+            <p className="text-[10px] text-indigo-600 font-mono mt-0.5 font-bold uppercase tracking-widest">{item.code}</p>
+          </div>
+          <button onClick={onClose} className="text-indigo-400 hover:text-indigo-700 text-2xl">&times;</button>
+        </div>
+
+        <div className="px-6 py-4 overflow-y-auto bg-gray-50 flex-1">
+          {loading ? <p className="text-center text-sm text-gray-400 py-10">Cargando checklist...</p> : tasks.length === 0 ? <p className="text-center text-sm text-gray-400 italic py-10">Este ticket no tiene tareas configuradas en el backlog.</p> : (
+            <div className="space-y-3">
+              {tasks.map(t => (
+                <label key={t.id} className={`flex items-start gap-3 p-4 bg-white border rounded-lg shadow-sm cursor-pointer transition-colors ${t.completado === 1 ? 'border-green-300 bg-green-50/40' : 'hover:border-indigo-300 border-gray-200'}`}>
+                  <div className="pt-0.5">
+                    <input 
+                      type="checkbox" 
+                      checked={t.completado === 1} 
+                      onChange={() => handleToggle(t.id, t.completado)} 
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" 
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium transition-all ${t.completado === 1 ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                      {t.descripcion}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1.5">
+                      {t.peso > 0 ? (
+                        <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Peso: {t.peso}%</span>
+                      ) : (
+                        <span className="text-[9px] font-bold text-gray-300 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Sin peso</span>
+                      )}
+                      {t.completado === 1 && t.completado_at && (
+                        <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">✓ Completado el {fmtTime(t.completado_at)}</span>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
