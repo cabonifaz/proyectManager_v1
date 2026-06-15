@@ -218,9 +218,12 @@ export function ObservacionesClient({ projects, tenant, role }: {
   const [viewDetail, setViewDetail]     = useState<Observacion | null>(null)
   const [detailAsigns, setDetailAsigns] = useState<Asignacion[]>([])
   const [saving, setSaving]             = useState(false)
-  const [formError, setFormError]       = useState('')
+const [formError, setFormError]       = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [itemToDelete, setItemToDelete]           = useState<Observacion | null>(null)
+  
+  // 🚀 ESTADO NUEVO: Controla el modal de reordenamiento
+  const [isReorderOpen, setIsReorderOpen]         = useState(false)
 
   // ── NUEVO: estado de ordenamiento ──
   const [sort, setSort] = useState<SortState>({ key: null, dir: 'asc' })
@@ -280,7 +283,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
     } catch { setBacklogItems([]) }
   }, [tenant])
 
-  const fetchItems = useCallback(async () => {
+const fetchItems = useCallback(async () => {
     if (!projectId) return
     setLoading(true)
     setFetchError('')
@@ -289,24 +292,26 @@ export function ObservacionesClient({ projects, tenant, role }: {
       if (estadoFilter) p.set('estado', estadoFilter)
       if (tipoFilter)   p.set('tipo',   tipoFilter)
       if (search)       p.set('search', search)
-      const res  = await fetch(`/api/${tenant}/observaciones?${p}`)
+      
+      // ROMPE-CACHÉ: Le agregamos la hora exacta en milisegundos a la URL
+      p.set('_t', String(Date.now()))
+
+      const res  = await fetch(`/api/${tenant}/observaciones?${p}`, { cache: 'no-store' })
       const json = await res.json()
+      
       if (!res.ok) { setFetchError(`Error ${res.status}: ${json.error}`); return }
       setItems(json.data ?? [])
-      // Nota: el sort se mantiene al recargar — los datos nuevos se ordenan automáticamente
-    } catch { setFetchError('Error de conexión') }
-    finally   { setLoading(false) }
+    } catch { 
+      setFetchError('Error de conexión') 
+    } finally { 
+      setLoading(false) 
+    }
   }, [projectId, tenant, estadoFilter, tipoFilter, search])
 
-  useEffect(() => { fetchItems() }, [fetchItems])
-
-  useEffect(() => {
-    if (projectId) {
-      fetchTechCols(projectId)
-      fetchSprintDevs(projectId)
-      fetchBacklogItems(projectId)
-    }
-  }, [projectId, fetchTechCols, fetchSprintDevs, fetchBacklogItems])
+  // 🚀 ESTE ES EL GATILLO AUTOMÁTICO QUE FALTABA
+  useEffect(() => { 
+    fetchItems() 
+  }, [fetchItems])
 
   async function fetchAsignaciones(obsId: number): Promise<Asignacion[]> {
     try {
@@ -503,12 +508,22 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           </span>
         )}
 
-        {canCreate && (
+       {canCreate && (
           <button
             onClick={openCreate}
             className="ml-auto bg-blue-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             + Nueva observación
+          </button>
+        )}
+
+        {/* 🚀 BOTÓN NUEVO: Abrir modal de reordenamiento */}
+        {projectId && (
+          <button
+            onClick={() => setIsReorderOpen(true)}
+            className="border border-gray-300 bg-white text-gray-700 px-3 py-2 rounded text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+          >
+            ↕ Reordenar Prioridades
           </button>
         )}
       </div>
@@ -971,6 +986,177 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           </div>
         </div>
       )}
+
+      {/* 🚀 MODAL NUEVO: Drag & Drop de Prioridades */}
+      {isReorderOpen && projectId && (
+        <ReorderObservacionesModal
+          tenant={tenant}
+          projectId={projectId}
+          onClose={() => {
+            setIsReorderOpen(false)
+            fetchItems() // Refresca la tabla principal con el nuevo orden
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Componente Modal para Reordenar Prioridades (Drag & Drop nativo) ─────────
+function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: string; projectId: number; onClose: () => void }) {
+  const [items, setItems] = useState<any[]>([])
+  // 🚀 NUEVO: Guardaremos los números exactos de prioridad que ya existen
+  const [prioritySlots, setPrioritySlots] = useState<number[]>([]) 
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+
+  const fetchActiveObs = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/${tenant}/observaciones?projectId=${projectId}`)
+      const json = await res.json()
+      
+      const allItems = Array.isArray(json.data) ? json.data : []
+      
+      const active = allItems.filter((o: any) => {
+        const estadoReal = o.estado ? String(o.estado).toLowerCase() : ''
+        const isEstadoValido = ['abierta', 'asignado', 'en_seguimiento'].includes(estadoReal)
+        const tienePrioridad = Number(o.prioridad) > 0
+        
+        return isEstadoValido && tienePrioridad
+      })
+      
+      // Ordenar de forma ascendente
+      active.sort((a: any, b: any) => (Number(a.prioridad) || 99) - (Number(b.prioridad) || 99))
+      
+      setItems(active)
+      // 🚀 Guardamos la lista de prioridades reales para usarlas como "huecos" estáticos
+      setPrioritySlots(active.map((o: any) => Number(o.prioridad)))
+    } catch (err) {
+      console.error(err)
+      setError('Error al recuperar las observaciones.')
+    } finally {
+      setLoading(false)
+    }
+  }, [tenant, projectId])
+
+  useEffect(() => {
+    if (projectId) fetchActiveObs()
+  }, [fetchActiveObs, projectId])
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index)
+  }
+
+  const handleDragOver = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === targetIndex) return
+
+    const updatedItems = [...items]
+    const draggedItem = updatedItems[draggedIndex]
+
+    updatedItems.splice(draggedIndex, 1)
+    updatedItems.splice(targetIndex, 0, draggedItem)
+
+    setDraggedIndex(targetIndex)
+    setItems(updatedItems)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError('')
+
+    // 🚀 Asignamos los números originales basados en la nueva posición
+    const payload = items.map((item, idx) => ({
+      id: item.id,
+      prioridad: prioritySlots[idx] 
+    }))
+
+    try {
+      const res = await fetch(`/api/${tenant}/observaciones/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, data: payload })
+      })
+      const json = await res.json()
+
+      if (!res.ok) {
+        setError(json.error ?? 'Error al procesar el ordenamiento.')
+        return
+      }
+
+      onClose()
+    } catch {
+      setError('Error de comunicación con el servidor de staging.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-xl flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
+          <div>
+            <h2 className="font-bold text-gray-800 text-lg">Jerarquía de Prioridades (Staging)</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Mueve las tareas entre los niveles de prioridad existentes.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
+        </div>
+
+        {error && (
+          <div className="mx-6 mt-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-xs rounded shrink-0">
+            {error}
+          </div>
+        )}
+
+        <div className="px-6 py-4 overflow-y-auto flex-1 bg-gray-50/50">
+          {loading ? (
+            <p className="text-center text-sm text-gray-400 py-10">Cargando flujo de trabajo...</p>
+          ) : items.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 italic py-10">No existen observaciones con prioridad configurada.</p>
+          ) : (
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={() => handleDragStart(idx)}
+                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-center gap-3 bg-white border p-3 rounded-lg shadow-sm cursor-move select-none transition-all ${
+                    draggedIndex === idx ? 'opacity-40 border-blue-400 bg-blue-50/30' : 'hover:border-gray-300'
+                  }`}
+                >
+                  {/* 🚀 Ahora mostramos el número de prioridad real estático */}
+                  <div className="text-blue-700 font-mono text-[10px] font-black tracking-widest uppercase bg-blue-50 border border-blue-100 w-16 h-7 rounded flex items-center justify-center shrink-0 shadow-inner">
+                    Prio: {prioritySlots[idx]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{item.titulo}</p>
+                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mt-0.5">ID: {item.id} — {item.tipo}</p>
+                  </div>
+                  <div className="text-gray-300 text-base font-bold px-1">☰</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 shrink-0">
+          <button type="button" onClick={onClose} disabled={saving} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium">
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSave} disabled={saving || items.length === 0} className="px-5 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 font-bold shadow-sm transition-colors">
+            {saving ? 'Guardando...' : 'Guardar Prioridades'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
