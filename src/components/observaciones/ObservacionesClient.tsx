@@ -313,6 +313,15 @@ const fetchItems = useCallback(async () => {
     fetchItems() 
   }, [fetchItems])
 
+  // 🚀 ESTE ES EL GATILLO PARA EL BACKLOG Y RESPONSABLES QUE SE HABÍA BORRADO
+  useEffect(() => {
+    if (projectId) {
+      fetchTechCols(projectId)
+      fetchSprintDevs(projectId)
+      fetchBacklogItems(projectId)
+    }
+  }, [projectId, fetchTechCols, fetchSprintDevs, fetchBacklogItems])
+
   async function fetchAsignaciones(obsId: number): Promise<Asignacion[]> {
     try {
       const res  = await fetch(`/api/${tenant}/observaciones/${obsId}/asignaciones`)
@@ -1002,10 +1011,9 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
   )
 }
 
-// ── Componente Modal para Reordenar Prioridades (Drag & Drop nativo) ─────────
+// ── Componente Modal para Reordenar Prioridades (Físicas Mejoradas) ─────────
 function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: string; projectId: number; onClose: () => void }) {
   const [items, setItems] = useState<any[]>([])
-  // 🚀 NUEVO: Guardaremos los números exactos de prioridad que ya existen
   const [prioritySlots, setPrioritySlots] = useState<number[]>([]) 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -1014,7 +1022,7 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
 
   const fetchActiveObs = useCallback(async () => {
     try {
-      const res = await fetch(`/api/${tenant}/observaciones?projectId=${projectId}`)
+      const res = await fetch(`/api/${tenant}/observaciones?projectId=${projectId}`, { cache: 'no-store' })
       const json = await res.json()
       
       const allItems = Array.isArray(json.data) ? json.data : []
@@ -1023,18 +1031,14 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
         const estadoReal = o.estado ? String(o.estado).toLowerCase() : ''
         const isEstadoValido = ['abierta', 'asignado', 'en_seguimiento'].includes(estadoReal)
         const tienePrioridad = Number(o.prioridad) > 0
-        
         return isEstadoValido && tienePrioridad
       })
       
-      // Ordenar de forma ascendente
       active.sort((a: any, b: any) => (Number(a.prioridad) || 99) - (Number(b.prioridad) || 99))
       
       setItems(active)
-      // 🚀 Guardamos la lista de prioridades reales para usarlas como "huecos" estáticos
       setPrioritySlots(active.map((o: any) => Number(o.prioridad)))
     } catch (err) {
-      console.error(err)
       setError('Error al recuperar las observaciones.')
     } finally {
       setLoading(false)
@@ -1045,22 +1049,32 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
     if (projectId) fetchActiveObs()
   }, [fetchActiveObs, projectId])
 
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index)
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    // Le indicamos al navegador que es un movimiento físico
+    e.dataTransfer.effectAllowed = "move"
+    // Un pequeño timeout permite que el navegador capture la imagen del bloque antes de aplicarle los estilos
+    setTimeout(() => setDraggedIndex(index), 0)
   }
 
-  const handleDragOver = (e: React.DragEvent, targetIndex: number) => {
+  // 🚀 Motor de físicas: onDragEnter hace que el desplazamiento sea exacto al colisionar
+  const handleDragEnter = (e: React.DragEvent, targetIndex: number) => {
     e.preventDefault()
     if (draggedIndex === null || draggedIndex === targetIndex) return
 
-    const updatedItems = [...items]
-    const draggedItem = updatedItems[draggedIndex]
+    setItems(prevItems => {
+      const newItems = [...prevItems]
+      const draggedItem = newItems[draggedIndex]
+      
+      newItems.splice(draggedIndex, 1)
+      newItems.splice(targetIndex, 0, draggedItem)
+      
+      setDraggedIndex(targetIndex)
+      return newItems
+    })
+  }
 
-    updatedItems.splice(draggedIndex, 1)
-    updatedItems.splice(targetIndex, 0, draggedItem)
-
-    setDraggedIndex(targetIndex)
-    setItems(updatedItems)
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault() // Requerido por HTML5 para soltar
   }
 
   const handleDragEnd = () => {
@@ -1071,7 +1085,6 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
     setSaving(true)
     setError('')
 
-    // 🚀 Asignamos los números originales basados en la nueva posición
     const payload = items.map((item, idx) => ({
       id: item.id,
       prioridad: prioritySlots[idx] 
@@ -1092,7 +1105,7 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
 
       onClose()
     } catch {
-      setError('Error de comunicación con el servidor de staging.')
+      setError('Error de comunicación con el servidor.')
     } finally {
       setSaving(false)
     }
@@ -1104,7 +1117,7 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <div>
             <h2 className="font-bold text-gray-800 text-lg">Jerarquía de Prioridades (Staging)</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Mueve las tareas entre los niveles de prioridad existentes.</p>
+            <p className="text-xs text-gray-400 mt-0.5">Arrastra las filas verticalmente para ajustar su urgencia.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
@@ -1117,31 +1130,38 @@ function ReorderObservacionesModal({ tenant, projectId, onClose }: { tenant: str
 
         <div className="px-6 py-4 overflow-y-auto flex-1 bg-gray-50/50">
           {loading ? (
-            <p className="text-center text-sm text-gray-400 py-10">Cargando flujo de trabajo...</p>
+            <p className="text-center text-sm text-gray-400 py-10">Cargando prioridades...</p>
           ) : items.length === 0 ? (
-            <p className="text-center text-sm text-gray-400 italic py-10">No existen observaciones con prioridad configurada.</p>
+            <p className="text-center text-sm text-gray-400 italic py-10">No existen observaciones con prioridad activa.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3 relative">
               {items.map((item, idx) => (
                 <div
                   key={item.id}
                   draggable
-                  onDragStart={() => handleDragStart(idx)}
-                  onDragOver={(e) => handleDragOver(e, idx)}
+                  onDragStart={(e) => handleDragStart(e, idx)}
+                  onDragEnter={(e) => handleDragEnter(e, idx)}
+                  onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}
-                  className={`flex items-center gap-3 bg-white border p-3 rounded-lg shadow-sm cursor-move select-none transition-all ${
-                    draggedIndex === idx ? 'opacity-40 border-blue-400 bg-blue-50/30' : 'hover:border-gray-300'
+                  // 🚀 Estilos de físicas: bloque sólido, levantado y con sombra al agarrarlo
+                  className={`flex items-center gap-3 p-3 rounded-lg cursor-grab active:cursor-grabbing transition-all duration-200 ${
+                    draggedIndex === idx 
+                      ? 'bg-white border-2 border-blue-500 shadow-xl scale-[1.02] z-50 relative' 
+                      : 'bg-white border border-gray-200 hover:border-blue-300 hover:shadow-md z-0'
                   }`}
                 >
-                  {/* 🚀 Ahora mostramos el número de prioridad real estático */}
-                  <div className="text-blue-700 font-mono text-[10px] font-black tracking-widest uppercase bg-blue-50 border border-blue-100 w-16 h-7 rounded flex items-center justify-center shrink-0 shadow-inner">
-                    Prio: {prioritySlots[idx]}
+                  <div className="text-gray-500 font-mono text-xs font-bold bg-gray-100 border border-gray-200 w-12 h-8 rounded flex items-center justify-center shrink-0">
+                    P: {prioritySlots[idx]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate">{item.titulo}</p>
-                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mt-0.5">ID: {item.id} — {item.tipo}</p>
+                    <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider mt-0.5">
+                      ID: {item.id} — {item.tipo}
+                    </p>
                   </div>
-                  <div className="text-gray-300 text-base font-bold px-1">☰</div>
+                  <div className="text-gray-300 hover:text-blue-500 transition-colors text-base font-bold px-2 cursor-grab">
+                    ☰
+                  </div>
                 </div>
               ))}
             </div>
