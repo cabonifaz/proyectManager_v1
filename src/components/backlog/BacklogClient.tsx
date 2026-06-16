@@ -560,7 +560,6 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     sprint_num:  item?.sprint_num  ?? '',
     eta:         item?.eta ? item.eta.toString().slice(0, 10) : '',
     comment:     item?.comment     ?? '',
-
   })
 
   const [techVals, setTechVals] = useState<Record<string, string>>(() => {
@@ -574,6 +573,35 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
 
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
+
+  // 🚀 1. NUEVO: Estado para saber si estamos cargando el código
+  const [loadingCode, setLoadingCode] = useState(false)
+
+  // 🚀 2. NUEVO: Efecto que busca el siguiente código apenas se abre el modal
+  useEffect(() => {
+    // Si estamos editando un item existente, no autogeneramos nada
+    if (item) return
+
+    let isMounted = true
+    async function fetchNextCode() {
+      setLoadingCode(true)
+      try {
+        const res = await fetch(`/api/${tenant}/backlog/next-code?projectId=${projectId}`)
+        const json = await res.json()
+        if (res.ok && json.nextCode && isMounted) {
+          // Inyecta el código autogenerado en el formulario
+          setForm(f => ({ ...f, code: json.nextCode }))
+        }
+      } catch (e) {
+        console.error("No se pudo autogenerar el código", e)
+      } finally {
+        if (isMounted) setLoadingCode(false)
+      }
+    }
+
+    fetchNextCode()
+    return () => { isMounted = false }
+  }, [projectId, tenant, item])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -598,7 +626,6 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
           sprintNum:   form.sprint_num  || null,
           eta:         form.eta         || null,
           comment:     form.comment     || null,
-         
         }),
       })
 
@@ -654,9 +681,18 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Código *</label>
-              <input required className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono"
-                value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="Ej: FEAT-123" />
+              {/* 🚀 3. NUEVO: Cambio en el texto del label y el input para mostrar el estado de carga */}
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">
+                Código * {loadingCode && <span className="text-blue-500 lowercase normal-case ml-1 font-normal">(generando...)</span>}
+              </label>
+              <input 
+                required 
+                className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono ${loadingCode ? 'bg-gray-100 animate-pulse text-gray-400' : ''}`}
+                value={form.code} 
+                onChange={e => setForm(f => ({ ...f, code: e.target.value }))} 
+                placeholder="Ej: FEAT-123" 
+                disabled={loadingCode}
+              />
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Módulo</label>
@@ -687,18 +723,18 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Avance %</label>
               <div className="flex items-center gap-2">
                 <input 
-    type="number" min={0} max={100} 
-    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
-    value={form.progress} 
-    onChange={e => {
-      const p = Number(e.target.value);
-      let s = form.status;
-      if (p === 0) s = 'pendiente';
-      else if (p > 0 && p < 100) s = 'en_progreso';
-      else if (p === 100) s = 'completado';
-      setForm(f => ({ ...f, progress: p, status: s }));
-    }} 
-  />
+                  type="number" min={0} max={100} 
+                  className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  value={form.progress} 
+                  onChange={e => {
+                    const p = Number(e.target.value);
+                    let s = form.status;
+                    if (p === 0) s = 'pendiente';
+                    else if (p > 0 && p < 100) s = 'en_progreso';
+                    else if (p === 100) s = 'completado';
+                    setForm(f => ({ ...f, progress: p, status: s }));
+                  }} 
+                />
                 <span className="text-sm font-medium text-gray-500 w-8">%</span>
               </div>
             </div>
@@ -713,8 +749,6 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
                 value={form.eta} onChange={e => setForm(f => ({ ...f, eta: e.target.value }))} />
             </div>
           </div>
-
-          
 
           {techCols.length > 0 && (
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
