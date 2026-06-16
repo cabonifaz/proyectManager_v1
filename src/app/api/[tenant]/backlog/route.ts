@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic' // 🚀 ESTA LÍNEA ELIMINA LA CACHÉ
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut, query } from '@/lib/db'

@@ -661,16 +661,18 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
     setSaving(true)
     setError('')
     try {
+// 1. Guardar la data general a través del Procedimiento Almacenado
       const res = await fetch(`/api/${tenant}/backlog/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          code:        form.code, // 🚀 Agregado
+          code:        form.code,
           module:      item.module      || null,
           description: item.description || null,
           progress:    Number(form.progress),
           status:      form.status,
-          sprintNum:   item.sprint_num  || null,
+          // 🚀 CORRECCIÓN: Usar ?? en lugar de || para respetar el sprint 0
+          sprintNum:   item.sprint_num  ?? null, 
           eta:         form.eta         || null,
           comment:     form.comment     || null,
           priority:    Number(form.priority),
