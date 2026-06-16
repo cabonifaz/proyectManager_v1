@@ -850,6 +850,11 @@ function ChecklistManagerModal({ tenant, item, onClose }: { tenant: string, item
   const [peso, setPeso] = useState<number | ''>('')
   const [saving, setSaving] = useState(false)
 
+  // 🚀 Nuevos estados para controlar la edición en línea
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null)
+  const [editDesc, setEditDesc] = useState('')
+  const [editPeso, setEditPeso] = useState<number | ''>('')
+
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
@@ -884,6 +889,27 @@ function ChecklistManagerModal({ tenant, item, onClose }: { tenant: string, item
     } catch (e) { console.error(e) }
   }
 
+  // 🚀 Función para procesar la actualización
+  async function handleUpdateTask(taskId: number) {
+    if (!editDesc.trim()) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/${tenant}/backlog/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          descripcion: editDesc.trim(), 
+          peso: Number(editPeso) || 0 
+        })
+      })
+      if (res.ok) {
+        setEditingTaskId(null)
+        fetchTasks() // Refrescar la tabla
+      }
+    } catch (e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -916,15 +942,65 @@ function ChecklistManagerModal({ tenant, item, onClose }: { tenant: string, item
             <div className="space-y-2">
               {tasks.map(t => (
                 <div key={t.id} className="flex items-center justify-between bg-white border border-gray-100 p-3 rounded-lg shadow-sm hover:border-blue-200 transition-colors">
-                  <span className="text-sm text-gray-700 font-medium flex-1 pr-4">{t.descripcion}</span>
-                  <div className="flex items-center gap-4">
-                    {t.peso > 0 ? (
-                       <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded">Peso: {t.peso}%</span>
-                    ) : (
-                       <span className="text-xs font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded">Sin peso</span>
-                    )}
-                    <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors" title="Eliminar tarea">×</button>
-                  </div>
+                  
+                  {/* 🚀 LÓGICA CONDICIONAL: MODO EDICIÓN VS MODO VISTA */}
+                  {editingTaskId === t.id ? (
+                    <div className="flex-1 flex items-center gap-2 pr-2">
+                      <input 
+                        type="text" 
+                        value={editDesc} 
+                        onChange={e => setEditDesc(e.target.value)} 
+                        className="flex-1 border rounded px-2 py-1 text-sm outline-none focus:border-blue-500" 
+                        autoFocus
+                      />
+                      <input 
+                        type="number" min="0" max="100" 
+                        value={editPeso} 
+                        onChange={e => setEditPeso(e.target.value === '' ? '' : Number(e.target.value))} 
+                        className="w-16 border rounded px-2 py-1 text-sm outline-none focus:border-blue-500" 
+                        placeholder="Peso %"
+                      />
+                      <button 
+                        onClick={() => handleUpdateTask(t.id)} 
+                        disabled={saving} 
+                        className="text-green-600 hover:text-green-800 font-bold px-2 text-xs uppercase"
+                      >
+                        ✓ Guardar
+                      </button>
+                      <button 
+                        onClick={() => setEditingTaskId(null)} 
+                        disabled={saving} 
+                        className="text-gray-400 hover:text-gray-600 font-bold px-2 text-xs uppercase"
+                      >
+                        ✕ Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-sm text-gray-700 font-medium flex-1 pr-4">{t.descripcion}</span>
+                      <div className="flex items-center gap-3">
+                        {t.peso > 0 ? (
+                           <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-1 rounded w-20 text-center">Peso: {t.peso}%</span>
+                        ) : (
+                           <span className="text-xs font-bold text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded w-20 text-center">Sin peso</span>
+                        )}
+                        
+                        {/* 🚀 BOTÓN PARA ACTIVAR EDICIÓN */}
+                        <button 
+                          onClick={() => {
+                            setEditingTaskId(t.id)
+                            setEditDesc(t.descripcion)
+                            setEditPeso(t.peso > 0 ? t.peso : '')
+                          }} 
+                          className="text-blue-500 hover:text-blue-700 font-bold text-xs uppercase transition-colors"
+                        >
+                          Editar
+                        </button>
+
+                        <button onClick={() => handleDelete(t.id)} className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors" title="Eliminar tarea">×</button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
