@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell // 🚀 ESTOS TRES SON NUEVOS
 } from 'recharts'
 import type { Role } from '@/lib/rbac'
 
@@ -148,6 +149,8 @@ export function DashboardClient({ projects, tenant, role: _role }: {
     { name: 'Bloqueado',   value: totals.blocked,     color: STATUS_COLORS_MAP.bloqueado   },
   ].filter(d => d.value > 0) : []
 
+
+
   return (
     <div className="space-y-6">
       {/* Selector */}
@@ -200,27 +203,54 @@ export function DashboardClient({ projects, tenant, role: _role }: {
                 <div className="bg-blue-500 h-3 rounded-full transition-all duration-700"
                   style={{ width: `${globalPct}%` }} />
               </div>
+              {/* 🚀 LÓGICA CONDICIONAL: Barras o Torta */}
               {barData.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Items por proyecto y estado</p>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={barData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip
-                        formatter={(value, name) => [value, name]}
-                        labelFormatter={label =>
-                          barData.find(b => b.name === label)?.fullName ?? String(label)
-                        }
-                      />
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="Completado"   fill={STATUS_COLORS_MAP.completado}  stackId="a" />
-                      <Bar dataKey="En progreso"  fill={STATUS_COLORS_MAP.en_progreso} stackId="a" />
-                      <Bar dataKey="En revisión"  fill={STATUS_COLORS_MAP.en_revision} stackId="a" />
-                      <Bar dataKey="Pendiente"    fill={STATUS_COLORS_MAP.pendiente}   stackId="a" />
-                      <Bar dataKey="Bloqueado"    fill={STATUS_COLORS_MAP.bloqueado}   stackId="a" radius={[4,4,0,0]} />
-                    </BarChart>
+                  <p className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">
+                    {projectId ? 'Distribución del Proyecto' : 'Items por proyecto y estado'}
+                  </p>
+                  
+                  <ResponsiveContainer width="100%" height={250}>
+                    {projectId ? (
+                      /* ── GRÁFICO DE DONA (Un solo proyecto) ── */
+                      /* ── GRÁFICO DE DONA (Un solo proyecto) ── */
+                      <PieChart>
+                        <Pie
+                          data={pieData} // 🚀 AQUÍ EL CAMBIO CLAVE: Usamos pieData que ya tiene Number()
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={90}
+                          paddingAngle={2}
+                          dataKey="value"
+                          label={(props: any) => `${props.name} ${(props.percent * 100).toFixed(0)}%`}
+                          labelLine={false}
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: any, name: any) => [`${value} items`, name]} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                      </PieChart>
+                    ) : (
+                      /* ── GRÁFICO DE BARRAS (Múltiples proyectos) ── */
+                      <BarChart data={barData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip
+  formatter={(value: any, name: any) => [value, name]}
+  labelFormatter={label => barData.find(b => b.name === label)?.fullName ?? String(label)}
+/>
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <Bar dataKey="Completado"  fill={STATUS_COLORS_MAP.completado}  stackId="a" />
+                        <Bar dataKey="En progreso" fill={STATUS_COLORS_MAP.en_progreso} stackId="a" />
+                        <Bar dataKey="En revisión" fill={STATUS_COLORS_MAP.en_revision} stackId="a" />
+                        <Bar dataKey="Pendiente"   fill={STATUS_COLORS_MAP.pendiente}   stackId="a" />
+                        <Bar dataKey="Bloqueado"   fill={STATUS_COLORS_MAP.bloqueado}   stackId="a" radius={[4,4,0,0]} />
+                      </BarChart>
+                    )}
                   </ResponsiveContainer>
                 </div>
               )}
