@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     // Usamos callProcedureOut mapeando los parámetros de entrada y atrapando las variables de salida
     const result = await callProcedureOut(
       'sp_project_upsert',
-      {
+{
         p_tenant_id:   ctx.tenantId,
         p_project_id:  null,
         p_manager_id:  body.managerId ?? null,
@@ -47,6 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         p_name:        body.name,
         p_description: body.description ?? null,
         p_status:      body.status ?? 'activo',
+        p_methodology: body.methodology ?? 'scrum', // 🚀 AÑADIR ESTA LÍNEA
         p_start_date:  body.startDate ?? null,
         p_end_date:    body.endDate ?? null,
         p_user_id:     ctx.userId

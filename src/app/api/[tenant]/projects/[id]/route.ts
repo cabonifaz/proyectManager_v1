@@ -58,17 +58,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
     const body   = await req.json()
     const result = await callProcedureOut(
       'sp_project_upsert',
-      {
+{
         p_tenant_id:   ctx.tenantId,
-        p_project_id:  Number(params.id),
-        p_manager_id:  body.managerId   ?? null,
-        p_code:        body.code        ?? null,
-        p_name:        body.name        ?? null,
+        p_project_id:  null,
+        p_manager_id:  body.managerId ?? null,
+        p_code:        body.code,
+        p_name:        body.name,
         p_description: body.description ?? null,
-        p_status:      body.status      ?? null,
-        p_start_date:  body.startDate   ?? null,
-        p_end_date:    body.endDate     ?? null,
-        p_user_id:     ctx.userId,
+        p_status:      body.status ?? 'activo',
+        p_methodology: body.methodology ?? 'scrum', // 🚀 AÑADIR ESTA LÍNEA
+        p_start_date:  body.startDate ?? null,
+        p_end_date:    body.endDate ?? null,
+        p_user_id:     ctx.userId
       },
       ['p_result_id', 'p_error'],
     )
