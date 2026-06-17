@@ -10,16 +10,68 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
     const id = Number(params.id)
     const body = await req.json()
 
-    // 🚀 EL RASTREADOR: Esto imprimirá en la terminal de tu VSCode (no en el navegador)
-    console.log("=== DATOS RECIBIDOS EN EL BACKEND ===")
-    console.log("ID del ticket:", id)
-    console.log("Prioridad recibida:", body.priority)
-    console.log("Número de Sprint:", body.sprintNum)
-    console.log("=====================================")
+    // ========================================================================
+    // 🛡️ 1. BLOQUE DE SEGURIDAD AISLADO POR PROYECTO (El que ya funcionaba)
+    // ========================================================================
+    const priorityNum = Number(body.priority) || 0;
+    const isCompleted = body.status === 'completado';
 
-    // ... resto de la función (callProcedureOut, etc.)
+    const currentTicketInfo: any = await query(
+        `SELECT sprint_num, priority, project_id, status FROM backlog_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+        [id]
+    );
+    
+    if (!currentTicketInfo || currentTicketInfo.length === 0) {
+        return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 });
+    }
 
-    // 1. Guardar la data general a través del Procedimiento Almacenado original
+    const projectId = currentTicketInfo[0].project_id;
+    const sprintNum = currentTicketInfo[0].sprint_num !== null 
+                        ? currentTicketInfo[0].sprint_num 
+                        : (body.sprintNum ?? 0);
+
+    // A. Validar duplicados (Añadiendo project_id al WHERE)
+    if (priorityNum > 0 && !isCompleted) {
+      const existing: any = await query(
+        `SELECT id, code, priority FROM backlog_items 
+         WHERE project_id = ? 
+           AND sprint_num = ? 
+           AND id != ? 
+           AND status != 'completado' 
+           AND deleted_at IS NULL 
+         FOR UPDATE`, 
+        [projectId, sprintNum, id]
+      );
+
+      const conflicto = existing.find((item: any) => Number(item.priority) === priorityNum);
+
+      if (conflicto) {
+        return NextResponse.json({ 
+            error: `La prioridad ${priorityNum} ya está asignada al ticket ${conflicto.code} en este sprint/proyecto.` 
+        }, { status: 400 });
+      }
+    }
+
+    // B. Efecto Cascada Sincronizado (Añadiendo project_id al WHERE)
+    if (body.status === 'completado' && currentTicketInfo[0].status !== 'completado') {
+        const oldPriority = currentTicketInfo[0].priority;
+        if (oldPriority > 0 && sprintNum !== null) {
+            await query(
+                `UPDATE backlog_items SET priority = priority - 1 
+                 WHERE project_id = ? AND sprint_num = ? AND priority > ? AND status != 'completado' AND deleted_at IS NULL`, 
+                [projectId, sprintNum, oldPriority]
+            );
+            await query(
+                `UPDATE sprint_items SET priority = priority - 1 
+                 WHERE project_id = ? AND sprint_num = ? AND priority > ? AND status != 'completado' AND deleted_at IS NULL`, 
+                [projectId, sprintNum, oldPriority]
+            );
+        }
+        body.priority = 0; 
+    }
+    // ========================================================================
+
+    // 2. Guardar la data general a través del Procedimiento Almacenado
     const result = await callProcedureOut(
       'sp_backlog_update',
       {
@@ -32,9 +84,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
         p_status:       body.status      ?? null,
         p_sprint_num:   body.sprintNum   ?? null,
         p_eta:          body.eta         ?? null,
-        p_comment:      body.comment     ?? null,
+        // 🚀 CORRECCIÓN AQUÍ: Engañamos al COALESCE enviando "" cuando borras el comentario
+        p_comment:      body.comment === null ? "" : (body.comment ?? null), 
         p_updated_by:   ctx.userId,
         p_eta_explicit: 'eta' in body ? 1 : 0,
+        p_priority:     body.priority    ?? 0, 
       },
       ['p_error']
     )
@@ -49,32 +103,33 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       )
     }
 
-   // 2. Lógica UPSERT para Prioridad y Fecha de Revisión
-    if (body.priority !== undefined || body.reviewDate !== undefined) {
-      // Verificamos si el registro ya existe en la tabla sprint_items
+   // 3. Lógica UPSERT para sincronizar sprint_items a la perfección
+    if (body.priority !== undefined || body.reviewDate !== undefined || body.status !== undefined) {
       const exist: any = await query(
         `SELECT id FROM sprint_items WHERE backlog_item_id = ? AND deleted_at IS NULL LIMIT 1`, 
         [id]
       )
 
       if (exist && exist.length > 0) {
-        // a) El registro EXISTE: Ejecutamos el UPDATE
+        // Ejecutamos el UPDATE
         await query(
           `UPDATE sprint_items 
-           SET priority = ?, review_date = ?, updated_by = ?, updated_at = NOW() 
+           SET priority = COALESCE(?, priority),
+               status = COALESCE(?, status),
+               review_date = COALESCE(?, review_date), 
+               updated_by = ?, 
+               updated_at = NOW() 
            WHERE backlog_item_id = ? AND deleted_at IS NULL`,
-          [String(body.priority ?? 0), body.reviewDate || null, ctx.userId, id]
+          [body.priority ?? 0, body.status ?? null, body.reviewDate || null, ctx.userId, id]
         )
-      // 🚀 CORRECCIÓN AQUÍ: Aseguramos que pase aunque el sprint sea 0
       } else if (body.sprintNum !== null && body.sprintNum !== undefined) { 
-        // b) El registro NO EXISTE: Lo insertamos copiando los datos base del backlog
+        // Lo insertamos copiando los datos base
         const backlogInfo: any = await query(
           `SELECT project_id, code, description, status FROM backlog_items WHERE id = ? LIMIT 1`, 
           [id]
         )
 
         if (backlogInfo && backlogInfo.length > 0) {
-          // Buscamos el ID real del sprint activo para hacer la inserción correctamente
           const sprintInfo: any = await query(
             `SELECT id FROM sprints WHERE number = ? AND project_id = ? AND deleted_at IS NULL LIMIT 1`, 
             [body.sprintNum, backlogInfo[0].project_id]
@@ -86,16 +141,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
                (sprint_id, backlog_item_id, project_id, code, description, sprint_num, status, priority, review_date, created_by, created_at) 
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
               [
-                sprintInfo[0].id, 
-                id, 
-                backlogInfo[0].project_id, 
-                backlogInfo[0].code, 
-                backlogInfo[0].description,
-                body.sprintNum, 
-                backlogInfo[0].status, 
-                String(body.priority ?? 0), 
-                body.reviewDate || null, 
-                ctx.userId
+                sprintInfo[0].id, id, backlogInfo[0].project_id, backlogInfo[0].code, backlogInfo[0].description,
+                body.sprintNum, body.status ?? backlogInfo[0].status, body.priority ?? 0, body.reviewDate || null, ctx.userId
               ]
             )
           }
@@ -109,6 +156,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
   }
 }
 
+// ... función DELETE se mantiene igual
 export async function DELETE(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'backlog:delete')
