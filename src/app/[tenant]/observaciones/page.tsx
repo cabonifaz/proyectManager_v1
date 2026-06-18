@@ -12,7 +12,14 @@ interface Project extends RowDataPacket {
   is_member: number
 }
 
-export default async function ObservacionesPage({ params }: { params: { tenant: string } }) {
+// 🚀 AÑADIDO: Recibimos searchParams en los props
+export default async function ObservacionesPage({ 
+  params,
+  searchParams 
+}: { 
+  params: { tenant: string },
+  searchParams: { projectId?: string } 
+}) {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/login')
 
@@ -30,6 +37,8 @@ export default async function ObservacionesPage({ params }: { params: { tenant: 
         projects={projectData}
         tenant={params.tenant}
         role={session.user.role as any}
+        // 🚀 AÑADIDO: Pasamos la ID del proyecto desde la URL al componente cliente
+        initialProjectId={searchParams.projectId ? Number(searchParams.projectId) : undefined}
       />
     </div>
   )

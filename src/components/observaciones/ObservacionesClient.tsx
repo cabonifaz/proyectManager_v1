@@ -172,15 +172,23 @@ const EMPTY_FORM: FormData = {
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export function ObservacionesClient({ projects, tenant, role }: {
-  projects: Project[]; tenant: string; role: Role
+export function ObservacionesClient({ projects, tenant, role, initialProjectId }: { // 🚀 1. Agregas initialProjectId aquí
+  projects: Project[]; tenant: string; role: Role; initialProjectId?: number
 }) {
   const allowedProjects = projects.filter(p => role === 'super_admin' || Number(p.is_member) > 0)
 
-  // 1. Iniciamos en null para leer la memoria local
+  // 1. Iniciamos en null para leer la memoria local o la URL
   const [projectId, setProjectId] = useState<number | null>(null);
 
   useEffect(() => {
+    // 🚀 2. PRIORIDAD 1: Si viene un ID por la URL (desde el botón del Tablero)
+    if (initialProjectId && allowedProjects.some(p => p.id === initialProjectId)) {
+      setProjectId(initialProjectId);
+      localStorage.setItem('pm_selected_project', String(initialProjectId));
+      return;
+    }
+
+    // PRIORIDAD 2: Leer de la memoria local (si entraste navegando normal)
     const savedProject = localStorage.getItem('pm_selected_project');
     if (savedProject) {
       const id = Number(savedProject);
@@ -189,10 +197,12 @@ export function ObservacionesClient({ projects, tenant, role }: {
         return;
       }
     }
+    
+    // PRIORIDAD 3: Por defecto, selecciona el primer proyecto de la lista
     const defaultId = allowedProjects[0]?.id ?? null;
     setProjectId(defaultId);
     if (defaultId) localStorage.setItem('pm_selected_project', String(defaultId));
-  }, [allowedProjects]);
+  }, [allowedProjects, initialProjectId]); // 🚀 3. Agregas initialProjectId a las dependencias
 
   // 2. Función para guardar el cambio de proyecto en memoria
   const handleProjectChange = (newId: number) => {
@@ -218,7 +228,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
   const [viewDetail, setViewDetail]     = useState<Observacion | null>(null)
   const [detailAsigns, setDetailAsigns] = useState<Asignacion[]>([])
   const [saving, setSaving]             = useState(false)
-const [formError, setFormError]       = useState('')
+ const [formError, setFormError]       = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [itemToDelete, setItemToDelete]           = useState<Observacion | null>(null)
   
