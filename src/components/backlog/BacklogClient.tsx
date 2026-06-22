@@ -16,6 +16,7 @@ interface BacklogItem {
   tech_columns: TechVal[]
   priority?: number;            
   review_date?: string | null;  
+  task_count?: number; // 🚀 NUEVO
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -76,6 +77,9 @@ const [sprintFilter, setSprint]         = useState('')
   const [showColConfig, setShowColConfig] = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [viewComment, setViewComment]     = useState<{ code: string; comment: string } | null>(null)
+
+  // 🚀 1. NUEVO: Estado para guardar la lista maestra de sprints
+  const [apiSprints, setApiSprints]       = useState<number[]>([])
   
   // 🚀 ESTADO NUEVO AQUÍ:
   const [checklistOpen, setChecklistOpen] = useState<BacklogItem | null>(null)
@@ -144,13 +148,27 @@ const [sprintFilter, setSprint]         = useState('')
     }
   }, [projectId, statusFilter, sprintFilter, search, tenant])
 
+// 🚀 2. NUEVA FUNCIÓN: Obtiene la lista oficial de sprints desde la Base de Datos
+  const fetchProjectSprints = useCallback(async () => {
+    if (!projectId) return
+    try {
+      const res = await fetch(`/api/${tenant}/sprints?projectId=${projectId}`)
+      const json = await res.json()
+      if (res.ok) {
+        const nums = (json.data ?? []).map((s: any) => s.number)
+        setApiSprints(nums)
+      }
+    } catch (e) { console.error(e) }
+  }, [projectId, tenant])
+
   useEffect(() => {
     async function loadAll() {
       await fetchColumns()
+      await fetchProjectSprints() // 🚀 Llamamos a la lista maestra aquí
       await fetchItems()
     }
     loadAll()
-  }, [projectId, tenant])
+  }, [projectId, tenant, fetchColumns, fetchProjectSprints, fetchItems])
 
   useEffect(() => {
     if (projectId) fetchItems()
@@ -203,9 +221,10 @@ const [sprintFilter, setSprint]         = useState('')
     }
   }
 
-  const sprints = Array.from(
-    new Set(items.map(i => Number(i.sprint_num)).filter(n => !isNaN(n) && n >= 0))
-  ).sort((a, b) => a - b)
+  // 🚀 3. CORRECCIÓN: Mezcla los sprints oficiales de la API con los de la tabla.
+  // De esta forma, el desplegable nunca se encogerá al aplicar un filtro.
+  const tableSprints = items.map(i => Number(i.sprint_num)).filter(n => !isNaN(n) && n >= 0)
+  const sprints = Array.from(new Set([...apiSprints, ...tableSprints])).sort((a, b) => a - b)
 
   const targetSprintNum = sprintFilter ? Number(sprintFilter) : (sprints.length > 0 ? Math.max(...sprints) : null)
   
@@ -410,12 +429,12 @@ const [sprintFilter, setSprint]         = useState('')
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   <div className="flex justify-end gap-3 items-center">
-                    {/* 🚀 BOTÓN NUEVO AQUÍ */}
+                    {/* 🚀 BOTÓN ACTUALIZADO AQUÍ */}
                     <button
                       onClick={() => setChecklistOpen(item)}
                       className="text-indigo-600 hover:text-indigo-800 text-[10px] font-bold uppercase transition-colors"
                     >
-                       Tareas
+                       TAREAS({item.task_count || 0})
                     </button>
 
                     {canEdit && (
