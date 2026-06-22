@@ -10,7 +10,7 @@ interface Project {
   name: string
   description: string
   status: string
-  methodology: string // 🚀 NUEVO: Campo de metodología desde la base de datos
+  methodology: string 
   start_date: string | null
   end_date: string | null
   manager_name: string | null
@@ -127,13 +127,17 @@ export function ProjectsClient({ tenant, role, userId }: {
     }
   }
 
-  // 🚀 REDIRECCIÓN INTELIGENTE: Scrum va a /backlog, el resto a /waterfall
   function handleGoToBoard(project: Project) {
     if (project.methodology === 'waterfall' || project.methodology === 'scrumxwaterfall') {
       router.push(`/${tenant}/waterfall?projectId=${project.id}`)
     } else {
       router.push(`/${tenant}/backlog?projectId=${project.id}`)
     }
+  }
+
+  // 🚀 NUEVO: Función para navegar a la vista de observaciones
+  function handleGoToObs(project: Project) {
+    router.push(`/${tenant}/observaciones?projectId=${project.id}`)
   }
 
   return (
@@ -208,6 +212,7 @@ export function ProjectsClient({ tenant, role, userId }: {
               canEdit={canEditProject(p)}
               canDelete={canDelete}
               onGoToBoard={() => handleGoToBoard(p)}
+              onGoToObs={() => handleGoToObs(p)} // 🚀 Se pasa la función al componente
               onEdit={() => { setEditItem(p); setShowForm(true) }}
               onDelete={() => handleDelete(p.id)}
             />
@@ -227,7 +232,7 @@ export function ProjectsClient({ tenant, role, userId }: {
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Completados</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Inicio</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600">Fin</th>
-                <th className="px-4 py-3 w-32"></th>
+                <th className="px-4 py-3 w-40"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -265,7 +270,15 @@ export function ProjectsClient({ tenant, role, userId }: {
                     {p.end_date ? p.end_date.toString().slice(0, 10) : '—'}
                   </td>
                   <td className="px-4 py-2">
-                    <div className="flex gap-2 justify-end">
+                    <div className="flex gap-3 justify-end items-center">
+                      {/* 🚀 NUEVO: Botón de observaciones en la vista de lista */}
+                      {p.obs_total > 0 && (
+                        <button onClick={() => handleGoToObs(p)}
+                          className="text-[11px] text-orange-600 font-bold hover:text-orange-800 transition-colors bg-orange-50 hover:bg-orange-100 px-2 py-1 rounded">
+                          OBS ({p.obs_total - p.obs_completadas})
+                        </button>
+                      )}
+                      
                       {canEditProject(p) && (
                         <>
                           <button onClick={() => handleGoToBoard(p)}
@@ -309,18 +322,17 @@ export function ProjectsClient({ tenant, role, userId }: {
   )
 }
 
-function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onEdit, onDelete }: {
+function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, onEdit, onDelete }: {
   project: Project
   canEdit: boolean
   canDelete: boolean
   onGoToBoard: () => void 
+  onGoToObs: () => void // 🚀 Recibe la función
   onEdit: () => void
   onDelete: () => void
 }) {
   return (
     <div className="bg-white rounded-lg shadow p-5 flex flex-col gap-3 hover:shadow-md transition-shadow relative overflow-hidden">
-      
-      {/* Indicador visual sutil de metodología */}
       <div className={`absolute top-0 left-0 w-1 h-full ${p.methodology === 'scrum' ? 'bg-blue-400' : p.methodology === 'waterfall' ? 'bg-indigo-400' : 'bg-purple-400'}`}></div>
 
       <div className="flex items-start justify-between pl-2">
@@ -361,7 +373,6 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onEdit, onDe
         </span>
       </div>
 
-      {/* 🚀 SECCIÓN OBSERVACIONES */}
       {(() => {
         const obsTotal       = Number(p.obs_total) || 0;
         const obsCompletadas = Number(p.obs_completadas) || 0;
@@ -376,9 +387,13 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onEdit, onDe
                   <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                     Resolución de Obs.
                   </span>
-                  <span className="text-sm font-bold text-orange-400">
-                    {obsPct}%
-                  </span>
+                  {/* 🚀 NUEVO: Botón de navegación dinámico */}
+                  <button 
+                    onClick={onGoToObs}
+                    className="text-[10px] font-bold text-orange-600 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded transition-colors uppercase tracking-widest"
+                  >
+                    Ver Detalle ›
+                  </button>
                 </div>
                 
                 <div className="w-full bg-gray-100 rounded-full h-1.5">
@@ -443,7 +458,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
     name:        item?.name        ?? '',
     description: item?.description ?? '',
     status:      item?.status      ?? 'activo',
-    methodology: item?.methodology ?? 'scrum', // 🚀 INICIALIZACIÓN
+    methodology: item?.methodology ?? 'scrum',
     start_date:  item?.start_date  ? item.start_date.toString().slice(0, 10) : '',
     end_date:    item?.end_date    ? item.end_date.toString().slice(0, 10)   : '',
   })
@@ -466,7 +481,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
           name:        form.name,
           description: form.description || null,
           status:      form.status,
-          methodology: form.methodology, // 🚀 SE ENVÍA AL BACKEND
+          methodology: form.methodology,
           startDate:   form.start_date  || null,
           endDate:     form.end_date    || null,
         }),
@@ -547,7 +562,8 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* <div>
+              {/* 🚀 RESTAURADO: Selector de Metodología */}
+              <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Metodología</label>
                 <select
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold text-blue-700 bg-blue-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
@@ -558,8 +574,8 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                   <option value="waterfall">Waterfall (Gantt)</option>
                   <option value="scrumxwaterfall">Híbrido (Ambos)</option>
                 </select>
-              </div> */}
-              <div>
+              </div>
+              {/* <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Estado</label>
                 <select
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer"
@@ -571,7 +587,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                   <option value="completado">Completado</option>
                   <option value="archivado">Archivado</option>
                 </select>
-              </div>
+              </div> */}
             </div>
 
             <div>
