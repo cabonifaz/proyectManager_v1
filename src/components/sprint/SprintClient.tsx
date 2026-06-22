@@ -443,7 +443,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                 <tr>
                   <th className={thClass('code', sort)} onClick={() => handleSort('code')}>Código <SortIcon col="code" sort={sort} /></th>
                   <th className={thClass('module', sort)} onClick={() => handleSort('module')}>Módulo <SortIcon col="module" sort={sort} /></th>
-                  <th className={thClass('description', sort)} onClick={() => handleSort('description')}>Descripción <SortIcon col="description" sort={sort} /></th>
+                 <th className={`${thClass('description', sort)} min-w-[300px]`} onClick={() => handleSort('description')}>Descripción <SortIcon col="description" sort={sort} /></th>
                   <th className={thClass('progress', sort)} onClick={() => handleSort('progress')}>Avance <SortIcon col="progress" sort={sort} /></th>
                   <th className={thClass('status', sort)} onClick={() => handleSort('status')}>Estado <SortIcon col="status" sort={sort} /></th>
                   <th className={thClass('eta', sort)} onClick={() => handleSort('eta')}>ETA <SortIcon col="eta" sort={sort} /></th>
@@ -489,9 +489,9 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{item.module || '—'}</td>
-                      <td className="px-3 py-2 max-w-xs">
-                        <span className="line-clamp-2 block font-medium text-gray-800">{item.description}</span>
-                      </td>
+                      <td className="px-3 py-2 min-w-[300px]">
+  <span className="line-clamp-2 block font-medium text-gray-800">{item.description}</span>
+</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1 w-24">
                           <div className="flex-1 bg-gray-200 rounded-full h-1.5">
@@ -932,6 +932,10 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
+  // 🚀 NUEVOS ESTADOS PARA EDICIÓN EN LÍNEA
+  const [editingSprintId, setEditingSprintId] = useState<number | null>(null)
+  const [editSprintName, setEditSprintName] = useState('')
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
@@ -958,12 +962,42 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
     } catch (e) { alert(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`) }
   }
 
+  // 🚀 NUEVA FUNCIÓN: Guardar el cambio de nombre
+  async function handleSaveEdit(sprint: Sprint) {
+    const newName = editSprintName.trim()
+    if (!newName || newName === sprint.name) {
+      setEditingSprintId(null)
+      return
+    }
+
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/${tenant}/sprints/${sprint.id}`, {
+        method: 'PATCH', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ projectId, name: newName }),
+      })
+      const json = await res.json()
+      if (!res.ok) { 
+        setError(json.error ?? 'Error al actualizar el nombre.')
+        return 
+      }
+      setEditingSprintId(null)
+      onSaved() // Refresca la lista
+    } catch (e) { 
+      setError('Error de comunicación con el servidor.') 
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         <div className="flex items-center justify-between mb-4 border-b pb-3">
           <h2 className="text-lg font-bold text-gray-800">Gestionar Sprints</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
+          <button onClick={onClose} disabled={saving} className="text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
         </div>
 
         <div className="mb-6">
@@ -973,18 +1007,66 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
           {sprints.length === 0 ? <p className="text-sm text-gray-400 italic bg-gray-50 p-3 rounded text-center border border-gray-100">Sin sprints creados</p> : (
             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
               {sprints.map(s => (
-                <div key={s.id} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-xs font-bold text-gray-400">#{s.number}</span>
-                    <span className="font-medium text-gray-700">{s.name}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${s.status === 'activo' ? 'bg-green-100 text-green-700' : s.status === 'completado' ? 'bg-blue-100 text-blue-700' : s.status === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>
-                      {s.status}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">{s.completion_pct}% — {s.total_items} items</span>
-                    {s.status === 'activo' ? <span className="text-[10px] font-bold text-green-600 uppercase bg-green-50 px-2 py-1 rounded">Activo</span> : s.status !== 'cancelado' ? <button onClick={() => handleActivate(s)} className="text-[10px] font-bold text-blue-600 uppercase bg-white border px-2 py-1 rounded shadow-sm hover:bg-blue-50 transition-colors">Activar</button> : null}
-                  </div>
+                <div key={s.id} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm transition-all">
+                  
+                  {/* 🚀 LÓGICA DE EDICIÓN CONDICIONAL AQUÍ */}
+                  {editingSprintId === s.id ? (
+                    <div className="flex items-center gap-3 w-full">
+                      <span className="font-mono text-xs font-bold text-gray-400 shrink-0">#{s.number}</span>
+                      <input
+                        autoFocus
+                        className="flex-1 border border-blue-300 rounded px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500 shadow-inner"
+                        value={editSprintName}
+                        onChange={e => setEditSprintName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveEdit(s)
+                          if (e.key === 'Escape') setEditingSprintId(null)
+                        }}
+                        disabled={saving}
+                      />
+                      <button 
+                        onClick={() => handleSaveEdit(s)} 
+                        disabled={saving} 
+                        className="text-[10px] font-bold text-green-700 uppercase bg-green-100 hover:bg-green-200 border border-green-200 px-2 py-1 rounded transition-colors shrink-0"
+                      >
+                        ✓ Guardar
+                      </button>
+                      <button 
+                        onClick={() => setEditingSprintId(null)} 
+                        disabled={saving} 
+                        className="text-[10px] font-bold text-gray-600 uppercase bg-gray-200 hover:bg-gray-300 border border-gray-300 px-2 py-1 rounded transition-colors shrink-0"
+                      >
+                        ✕ Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-xs font-bold text-gray-400">#{s.number}</span>
+                        <span className="font-medium text-gray-700">{s.name}</span>
+                        <button 
+                          onClick={() => { setEditingSprintId(s.id); setEditSprintName(s.name); setError(''); }} 
+                          className="text-gray-400 hover:text-blue-600 transition-colors px-1" 
+                          title="Editar nombre"
+                          disabled={saving}
+                        >
+                          ✎
+                        </button>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${s.status === 'activo' ? 'bg-green-100 text-green-700' : s.status === 'completado' ? 'bg-blue-100 text-blue-700' : s.status === 'cancelado' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'}`}>
+                          {s.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">{s.completion_pct}% — {s.total_items} items</span>
+                        {s.status === 'activo' ? (
+                          <span className="text-[10px] font-bold text-green-600 uppercase bg-green-50 px-2 py-1 rounded">Activo</span>
+                        ) : s.status !== 'cancelado' ? (
+                          <button onClick={() => handleActivate(s)} disabled={saving} className="text-[10px] font-bold text-blue-600 uppercase bg-white border px-2 py-1 rounded shadow-sm hover:bg-blue-50 transition-colors">Activar</button>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               ))}
             </div>
@@ -998,11 +1080,11 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Número *</label>
-                <input required type="number" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={form.number} onChange={e => setForm(f => ({ ...f, number: e.target.value }))} />
+                <input required type="number" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={form.number} onChange={e => setForm(f => ({ ...f, number: e.target.value }))} disabled={saving} />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Estado inicial</label>
-                <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))} disabled={saving}>
                   <option value="planificado">Planificado</option>
                   <option value="activo">Activo (reemplaza al actual)</option>
                 </select>
@@ -1010,24 +1092,24 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Nombre *</label>
-              <input required className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" placeholder="ej: Sprint 2 — Módulo de pagos" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              <input required className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" placeholder="ej: Sprint 2 — Módulo de pagos" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} disabled={saving} />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Objetivo</label>
-              <textarea rows={2} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none" placeholder="¿Qué se espera lograr en este sprint?" value={form.goal} onChange={e => setForm(f => ({ ...f, goal: e.target.value }))} />
+              <textarea rows={2} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none" placeholder="¿Qué se espera lograr en este sprint?" value={form.goal} onChange={e => setForm(f => ({ ...f, goal: e.target.value }))} disabled={saving} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Fecha inicio</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />
+                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} disabled={saving} />
               </div>
               <div>
                 <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Fecha fin</label>
-                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} />
+                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 text-gray-600" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} disabled={saving} />
               </div>
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t">
-              <button type="button" onClick={onClose} className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-600">Cerrar</button>
+              <button type="button" onClick={onClose} disabled={saving} className="px-6 py-2 text-sm border rounded-lg hover:bg-gray-50 transition-colors font-medium text-gray-600">Cerrar</button>
               <button type="submit" disabled={saving} className="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-bold transition-colors">{saving ? 'Creando...' : 'Crear Sprint'}</button>
             </div>
           </form>

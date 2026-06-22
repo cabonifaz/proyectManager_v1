@@ -218,9 +218,35 @@ export function ObservacionesClient({ projects, tenant, role, initialProjectId }
   const backlogRef                      = useRef<HTMLDivElement>(null)
   const [loading, setLoading]           = useState(false)
   const [fetchError, setFetchError]     = useState('')
-  const [search, setSearch]             = useState('')
-  const [estadoFilter, setEstado]       = useState('abierta')
-  const [tipoFilter, setTipo]           = useState('')
+const [search, setSearch]             = useState('')
+  // 🚀 Arreglos para almacenar múltiples selecciones simultáneas ([] significa mostrar todos)
+  const [estadoFilters, setEstadoFilters] = useState<string[]>([]) 
+  const [tipoFilters, setTipoFilters]     = useState<string[]>([])
+
+  // Opciones de configuración visual para las píldoras de filtrado
+  const TIPO_OPTIONS = [
+    { val: 'riesgo',  label: 'Riesgo',  color: 'bg-red-100 text-red-700' },
+    { val: 'bloqueo', label: 'Bloqueo', color: 'bg-orange-100 text-orange-700' },
+    { val: 'mejora',  label: 'Mejora',  color: 'bg-blue-100 text-blue-700' },
+    { val: 'nota',    label: 'Nota',    color: 'bg-gray-100 text-gray-700' },
+  ]
+
+  const ESTADO_OPTIONS_LIST = [
+    { val: 'abierta',        label: 'Abierta',        color: 'bg-gray-100 text-gray-700' },
+    { val: 'asignado',       label: 'Asignado',       color: 'bg-purple-100 text-purple-700' },
+    { val: 'en_seguimiento', label: 'En seguimiento', color: 'bg-blue-100 text-blue-700' },
+    { val: 'resuelta',       label: 'Resuelta',       color: 'bg-green-100 text-green-700' },
+    { val: 'cerrada',        label: 'Cerrada',        color: 'bg-gray-200 text-gray-500' },
+  ]
+
+  // Funciones auxiliares para añadir o remover filtros con un clic
+  const toggleEstadoFilter = (val: string) => {
+    setEstadoFilters(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
+  }
+
+  const toggleTipoFilter = (val: string) => {
+    setTipoFilters(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
+  }
   const [showForm, setShowForm]         = useState(false)
   const [editItem, setEditItem]         = useState<Observacion | null>(null)
   const [form, setForm]                 = useState<FormData>(EMPTY_FORM)
@@ -299,9 +325,12 @@ const fetchItems = useCallback(async () => {
     setFetchError('')
     try {
       const p = new URLSearchParams({ projectId: String(projectId) })
-      if (estadoFilter) p.set('estado', estadoFilter)
-      if (tipoFilter)   p.set('tipo',   tipoFilter)
-      if (search)       p.set('search', search)
+      
+      // 🚀 Se inyectan múltiples parámetros idénticos que Next.js interpretará como arreglos
+      estadoFilters.forEach(e => p.append('estado', e))
+      tipoFilters.forEach(t => p.append('tipo', t))
+      
+      if (search) p.set('search', search)
       
       // ROMPE-CACHÉ: Le agregamos la hora exacta en milisegundos a la URL
       p.set('_t', String(Date.now()))
@@ -316,7 +345,8 @@ const fetchItems = useCallback(async () => {
     } finally { 
       setLoading(false) 
     }
-  }, [projectId, tenant, estadoFilter, tipoFilter, search])
+// 🚀 CORRECCIÓN: Usar los arreglos en las dependencias
+  }, [projectId, tenant, estadoFilters, tipoFilters, search])
 
   // 🚀 ESTE ES EL GATILLO AUTOMÁTICO QUE FALTABA
   useEffect(() => { 
@@ -482,30 +512,47 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           ))}
         </select>
 
-        <select
-          value={tipoFilter}
-          onChange={e => setTipo(e.target.value)}
-          className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todos los tipos</option>
-          <option value="riesgo">Riesgo</option>
-          <option value="bloqueo">Bloqueo</option>
-          <option value="mejora">Mejora</option>
-          <option value="nota">Nota</option>
-        </select>
+        {/* 🚀 Filtros Múltiples para Tipos */}
+        <div className="flex gap-1.5 items-center border-r pr-3 border-gray-200">
+          <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Tipos:</span>
+          {TIPO_OPTIONS.map(t => (
+            <button
+              key={t.val}
+              onClick={() => toggleTipoFilter(t.val)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                tipoFilters.includes(t.val) 
+                  ? `${t.color} border-current shadow-sm scale-105` 
+                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+          {tipoFilters.length > 0 && (
+            <button onClick={() => setTipoFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline ml-1">Todo</button>
+          )}
+        </div>
 
-        <select
-          value={estadoFilter}
-          onChange={e => setEstado(e.target.value)}
-          className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todos los estados</option>
-          <option value="abierta">Abierta</option>
-          <option value="asignado">Asignado</option> {/* 🚀 Opción agregada */}
-          <option value="en_seguimiento">En seguimiento</option>
-          <option value="resuelta">Resuelta</option>
-          <option value="cerrada">Cerrada</option>
-        </select>
+        {/* 🚀 Filtros Múltiples para Estados */}
+        <div className="flex gap-1.5 items-center">
+          <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Estados:</span>
+          {ESTADO_OPTIONS_LIST.map(s => (
+            <button
+              key={s.val}
+              onClick={() => toggleEstadoFilter(s.val)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                estadoFilters.includes(s.val) 
+                  ? `${s.color} border-current shadow-sm scale-105` 
+                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+          {estadoFilters.length > 0 && (
+            <button onClick={() => setEstadoFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline ml-1">Todo</button>
+          )}
+        </div>
 
         <input
           type="text"

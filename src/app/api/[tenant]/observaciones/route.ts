@@ -12,8 +12,13 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get('projectId')
     if (!projectId) return NextResponse.json({ error: 'projectId requerido' }, { status: 400 })
 
-    const estado = searchParams.get('estado') ?? null
-    const tipo   = searchParams.get('tipo')   ?? null
+    // 🚀 NUEVA LÓGICA: Atrapa múltiples valores (ej. ?tipo=mejora&tipo=nota) y los une con comas
+    const estadoParams = searchParams.getAll('estado')
+    const tipoParams   = searchParams.getAll('tipo')
+
+    const estado = estadoParams.length > 0 ? estadoParams.join(',') : null
+    const tipo   = tipoParams.length > 0   ? tipoParams.join(',')   : null
+    
     const search = searchParams.get('search') ?? null
     const limit  = Number(searchParams.get('limit')  ?? 200)
     const offset = Number(searchParams.get('offset') ?? 0)
@@ -50,11 +55,11 @@ export async function POST(req: NextRequest) {
         p_titulo:          body.titulo,
         p_descripcion:     body.descripcion   ?? null,
         p_eta:             body.eta           ?? null,
-        p_estado:          body.estado        ?? 'abierta', // 🚀 Dato 9
-        p_entregado_at:    body.entregadoAt   ?? null,      // 🚀 Dato 10
-        p_created_by:      ctx.userId,                      // 🚀 Dato 11
+        p_estado:          body.estado        ?? 'abierta', 
+        p_entregado_at:    body.entregadoAt   ?? null,      
+        p_created_by:      ctx.userId,                      
       },
-      ['p_new_id', 'p_error'],                              // 🚀 Datos 12 y 13 (Salida)
+      ['p_new_id', 'p_error'],                              
     )
 
     if (result.p_error) return NextResponse.json({ error: result.p_error }, { status: 400 })
