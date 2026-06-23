@@ -10,14 +10,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
     const taskId = Number(params.taskId)
     const body = await req.json()
 
-    // =========================================================================
     // ESCENARIO 1: Toggle de estado (Check / Uncheck)
-    // =========================================================================
     if (body.completado !== undefined) {
       const result: any = await callProcedureOut('sp_task_toggle', {
         p_task_id: taskId,
         p_completado: Number(body.completado),
-        p_updated_by: ctx.userId // El SP sí maneja su propia lógica
+        p_updated_by: ctx.userId 
       }, ['p_error'])
 
       if (result.p_error) {
@@ -26,15 +24,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       return NextResponse.json({ message: 'Estado de la tarea actualizado con éxito' })
     }
 
-    // =========================================================================
     // ESCENARIO 2: Edición en línea (Descripción y Peso)
-    // =========================================================================
     if (body.descripcion !== undefined) {
       if (!body.descripcion.trim()) {
         return NextResponse.json({ error: 'La descripción es obligatoria' }, { status: 400 })
       }
 
-      // 🚀 CORRECCIÓN: Se eliminó "updated_by = ?" porque la tabla no tiene esa columna
       await query(
         `UPDATE backlog_item_tasks 
          SET descripcion = ?, peso = ?, updated_at = NOW()
@@ -48,10 +43,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       if (taskRows.length > 0) {
         const backlogItemId = taskRows[0].backlog_item_id
 
+        // 🚀 APLICAMOS EL FILTRO DE BORRADO LÓGICO AQUÍ
         const statsRows: any = await query(
           `SELECT COUNT(*) as total, SUM(IF(completado = 1, 1, 0)) as compl, SUM(peso) as total_peso, SUM(IF(completado = 1, peso, 0)) as compl_peso 
            FROM backlog_item_tasks 
-           WHERE backlog_item_id = ?`, 
+           WHERE backlog_item_id = ? AND deleted_at IS NULL`, 
           [backlogItemId]
         )
 
@@ -64,7 +60,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
           nuevoAvance = Math.round((compl / total) * 100)
         }
 
-        // Actualizamos el ticket padre (esta tabla SÍ tiene updated_by)
         await query(
           `UPDATE backlog_items 
            SET progress = ?, status = IF(? = 100, 'completado', IF(? > 0, 'en_progreso', status)), updated_at = NOW(), updated_by = ? 
@@ -82,7 +77,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
   }
 }
 
-// DELETE: Elimina una tarea y recalcula el progreso restante del ticket principal
+// DELETE: Elimina LÓGICAMENTE una tarea y recalcula el progreso restante
 export async function DELETE(req: NextRequest, { params }: { params: { tenant: string; taskId: string } }) {
   try {
     const { ctx, errorResponse } = await guardRoute(req, 'backlog:delete')
@@ -90,21 +85,24 @@ export async function DELETE(req: NextRequest, { params }: { params: { tenant: s
 
     const taskId = Number(params.taskId)
     
-    // 1. Buscamos el ID del ticket padre antes de borrar la tarea
+    // 1. Buscamos el ID del ticket padre
     const taskRows: any = await query('SELECT backlog_item_id FROM backlog_item_tasks WHERE id = ?', [taskId])
     if (taskRows.length === 0) {
       return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
     }
     const backlogItemId = taskRows[0].backlog_item_id
 
-    // 2. Eliminamos la tarea
-    await query('DELETE FROM backlog_item_tasks WHERE id = ?', [taskId])
+    // 2. 🚀 ELIMINACIÓN LÓGICA DE LA TAREA (Asignando fecha y usuario)
+    await query(
+      'UPDATE backlog_item_tasks SET deleted_at = NOW(), deleted_by = ? WHERE id = ?', 
+      [ctx.userId, taskId]
+    )
 
-    // 3. Recalculamos el progreso del ticket con las tareas que quedan vigentes
+    // 3. Recalculamos ignorando las eliminadas
     const statsRows: any = await query(
       `SELECT COUNT(*) as total, SUM(IF(completado = 1, 1, 0)) as compl, SUM(peso) as total_peso, SUM(IF(completado = 1, peso, 0)) as compl_peso 
        FROM backlog_item_tasks 
-       WHERE backlog_item_id = ?`, 
+       WHERE backlog_item_id = ? AND deleted_at IS NULL`, 
       [backlogItemId]
     )
 
@@ -117,7 +115,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { tenant: s
       nuevoAvance = Math.round((compl / total) * 100)
     }
 
-    // 4. Actualizamos el avance e integraciones de estado del ticket padre
+    // 4. Actualizamos ticket padre
     await query(
       `UPDATE backlog_items 
        SET progress = ?, status = IF(? = 100, 'completado', IF(? > 0, 'en_progreso', status)), updated_at = NOW(), updated_by = ? 
@@ -125,7 +123,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { tenant: s
       [nuevoAvance, nuevoAvance, nuevoAvance, ctx.userId, backlogItemId]
     )
 
-    return NextResponse.json({ message: 'Tarea eliminada y progreso del ticket actualizado' })
+    return NextResponse.json({ message: 'Tarea eliminada (Soft Delete) y progreso actualizado' })
   } catch (err) {
     return handleApiError(err)
   }
