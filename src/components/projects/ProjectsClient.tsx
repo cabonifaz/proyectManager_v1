@@ -562,7 +562,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* 🚀 RESTAURADO: Selector de Metodología */}
+              {/* 🚀 RESTAURADO: Selector de Metodología
               <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Metodología</label>
                 <select
@@ -574,8 +574,8 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                   <option value="waterfall">Waterfall (Gantt)</option>
                   <option value="scrumxwaterfall">Híbrido (Ambos)</option>
                 </select>
-              </div>
-              {/* <div>
+              </div> */}
+              <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Estado</label>
                 <select
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer"
@@ -587,7 +587,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                   <option value="completado">Completado</option>
                   <option value="archivado">Archivado</option>
                 </select>
-              </div> */}
+              </div> 
             </div>
 
             <div>

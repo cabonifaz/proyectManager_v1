@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
 import { callProcedureOut, query } from '@/lib/db'
 
-
 // GET: Obtiene todas las tareas de un ticket específico
 export async function GET(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
     const { errorResponse } = await guardRoute(req, 'backlog:read')
     if (errorResponse) return errorResponse
 
+   // 🚀 CORRECCIÓN: Agregado el filtro AND deleted_at IS NULL
    const rows: any = await query(
       `SELECT id, backlog_item_id, descripcion, peso, completado, completado_at, created_by, created_at 
        FROM backlog_item_tasks 
-       WHERE backlog_item_id = ? 
+       WHERE backlog_item_id = ? AND deleted_at IS NULL
        ORDER BY created_at ASC`,
       [Number(params.id)]
     )
