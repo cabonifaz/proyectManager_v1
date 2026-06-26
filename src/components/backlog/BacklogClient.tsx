@@ -8,7 +8,13 @@ import type { Role } from '@/lib/rbac'
 
 interface Project { id: number; code: string; name: string; is_member?: number }
 interface TechCol  { id: number; col_key: string; name: string; col_type: string; sort_order: number }
-interface TechVal  { col_key: string; name: string; value: string; eta: string | null }
+interface TechVal  { 
+  col_key: string; 
+  name: string; 
+  value: string; 
+  eta: string | null; 
+  assigned_users?: { id: number; name: string; role: string }[] | null 
+}
 interface BacklogItem {
   id: number; code: string; module: string; description: string
   progress: number; status: string; sprint_num: number | string | null
@@ -413,7 +419,17 @@ const [sprintFilter, setSprint]         = useState('')
                 <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{item.eta ? item.eta.toString().slice(0, 10) : '—'}</td>
                 {techCols.map(col => {
                   const val = item.tech_columns?.find(t => t.col_key === col.col_key)
-                  return <td key={col.col_key} className="px-3 py-2 text-xs"><div className="text-gray-700 whitespace-nowrap">{val?.value || '—'}</div></td>
+                  const users = val?.assigned_users || []
+                  const manualValue = val?.value || ''
+                  return (
+                    <td key={col.col_key} className="px-3 py-2 text-xs">
+                      <div className="text-gray-700 whitespace-nowrap">
+                        {users.length > 0 
+                          ? users.map(u => u.name).join(', ') 
+                          : manualValue ? manualValue : '—'}
+                      </div>
+                    </td>
+                  )
                 })}
                 <td className="px-3 py-2 text-xs">
                   {item.comment ? (
@@ -581,26 +597,45 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     comment:     item?.comment     ?? '',
   })
 
-  const [techVals, setTechVals] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {}
+// 🚀 1. Estado para almacenar arreglos de IDs (checkboxes) - FILTRANDO NULLS
+  const [techVals, setTechVals] = useState<Record<string, number[]>>(() => {
+    const init: Record<string, number[]> = {}
     techCols.forEach(col => {
       const existing = item?.tech_columns?.find(t => t.col_key === col.col_key)
-      init[col.col_key] = existing?.value ?? ''
+      // Evitamos el bug del arreglo fantasma [null] filtrando solo usuarios válidos
+      const validUsers = existing?.assigned_users?.filter((u: any) => u && u.id) || []
+      init[col.col_key] = validUsers.map((u: any) => u.id)
     })
     return init
   })
 
+  // 🚀 2. Estado y Fetch para cargar a los miembros del proyecto
+  const [projectMembers, setProjectMembers] = useState<any[]>([])
+  useEffect(() => {
+    async function loadMembers() {
+      try {
+        const resUsers = await fetch(`/api/${tenant}/users`)
+        const jsonUsers = await resUsers.json()
+        const allUsers = jsonUsers.data ?? []
+        
+        const resMem = await fetch(`/api/${tenant}/projects/${projectId}/members`)
+        const jsonMem = await resMem.json()
+        const memIds = (jsonMem.data ?? []).map((m: any) => m.user_id)
+        
+        setProjectMembers(allUsers.filter((u: any) => memIds.includes(u.id)))
+      } catch (e) {
+        console.error("Error cargando miembros", e)
+      }
+    }
+    if (projectId) loadMembers()
+  }, [tenant, projectId])
+
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
-
-  // 🚀 1. NUEVO: Estado para saber si estamos cargando el código
   const [loadingCode, setLoadingCode] = useState(false)
 
-  // 🚀 2. NUEVO: Efecto que busca el siguiente código apenas se abre el modal
   useEffect(() => {
-    // Si estamos editando un item existente, no autogeneramos nada
     if (item) return
-
     let isMounted = true
     async function fetchNextCode() {
       setLoadingCode(true)
@@ -608,16 +643,11 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
         const res = await fetch(`/api/${tenant}/backlog/next-code?projectId=${projectId}`)
         const json = await res.json()
         if (res.ok && json.nextCode && isMounted) {
-          // Inyecta el código autogenerado en el formulario
           setForm(f => ({ ...f, code: json.nextCode }))
         }
-      } catch (e) {
-        console.error("No se pudo autogenerar el código", e)
-      } finally {
-        if (isMounted) setLoadingCode(false)
-      }
+      } catch (e) { console.error(e) }
+      finally { if (isMounted) setLoadingCode(false) }
     }
-
     fetchNextCode()
     return () => { isMounted = false }
   }, [projectId, tenant, item])
@@ -651,33 +681,62 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
       const json = await res.json()
       if (!res.ok) {
         setError(`Error ${res.status}: ${json.error ?? 'Error al guardar'}`)
-        setSaving(false)
-        return
+        setSaving(false); return
       }
 
-      const itemId = item?.id ?? json.id
+const itemId = item?.id ?? json.id
       const techErrors: string[] = []
 
+      // 🚀 3. LOGICA DE DOBLE GUARDADO (CONVIVENCIA Y SINCRONIZACIÓN)
       await Promise.all(
         techCols.map(async col => {
-          const val = techVals[col.col_key]
-          if (!val) return
-          const r = await fetch(`/api/${tenant}/backlog/${itemId}/tech`, {
+          const selectedIds = techVals[col.col_key] || []
+          // Concatenamos los nombres para guardarlos en la tabla vieja como backup
+          const selectedNames = projectMembers
+            .filter(m => selectedIds.includes(m.id))
+            .map(m => m.name).join(', ')
+
+          // A) Guardamos en la API antigua del Backlog (El Respaldo Histórico)
+          const r1 = await fetch(`/api/${tenant}/backlog/${itemId}/tech`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ columnId: col.id, value: val || null, eta: null }),
+            body: JSON.stringify({ columnId: col.id, value: selectedNames || null, eta: null }),
           })
-          if (!r.ok) {
-            const rj = await r.json()
-            techErrors.push(`${col.name}: ${rj.error}`)
+          
+          if (!r1.ok) {
+            const rj = await r1.json()
+            techErrors.push(`${col.name} (Backlog): ${rj.error}`)
+          }
+
+          // B) SINCRONIZACIÓN MAESTRA: Si el ticket tiene un Sprint asignado (ej: 1, 2, 3), 
+          // obligamos al sistema a guardar los IDs en la tabla nueva para que el Dashboard lo detecte al instante.
+          const sprintNum = form.sprint_num ? Number(form.sprint_num) : null;
+          if (sprintNum && sprintNum > 0) {
+            try {
+              // Primero, debemos averiguar cuál es el 'sprint_item_id' real de este ticket en ese sprint
+              const spRes = await fetch(`/api/${tenant}/sprints/${sprintNum}/items/${itemId}/assign`, {
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ columnId: col.id, userIds: selectedIds }),
+              })
+              
+              if (!spRes.ok) {
+                 const spErr = await spRes.json()
+                 // Ignoramos errores 404 porque significa que el ticket aún no se inserta en sprint_items
+                 if (spRes.status !== 404) {
+                    console.warn(`Advertencia al sincronizar Sprint: ${spErr.error}`)
+                 }
+              }
+            } catch (err) {
+              console.warn("Fallo silencioso en sincronización de sprint", err)
+            }
           }
         })
       )
 
       if (techErrors.length > 0) {
-        setError(`Item guardado pero con errores en columnas tech: ${techErrors.join(', ')}`)
-        setSaving(false)
-        return
+        setError(`Item guardado pero con errores tech: ${techErrors.join(', ')}`)
+        setSaving(false); return
       }
 
       onSaved()
@@ -700,18 +759,11 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              {/* 🚀 3. NUEVO: Cambio en el texto del label y el input para mostrar el estado de carga */}
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">
-                Código * {loadingCode && <span className="text-blue-500 lowercase normal-case ml-1 font-normal">(generando...)</span>}
+                Código * {loadingCode && <span className="text-blue-500 normal-case ml-1 font-normal">(generando...)</span>}
               </label>
-              <input 
-                required 
-                className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono ${loadingCode ? 'bg-gray-100 animate-pulse text-gray-400' : ''}`}
-                value={form.code} 
-                onChange={e => setForm(f => ({ ...f, code: e.target.value }))} 
-                placeholder="Ej: FEAT-123" 
-                disabled={loadingCode}
-              />
+              <input required className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 font-mono ${loadingCode ? 'bg-gray-100 animate-pulse text-gray-400' : ''}`}
+                value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="Ej: FEAT-123" disabled={loadingCode} />
             </div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Módulo</label>
@@ -741,16 +793,11 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Avance %</label>
               <div className="flex items-center gap-2">
-                <input 
-                  type="number" min={0} max={100} 
-                  className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
+                <input type="number" min={0} max={100} className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500"
                   value={form.progress} 
                   onChange={e => {
-                    const p = Number(e.target.value);
-                    let s = form.status;
-                    if (p === 0) s = 'pendiente';
-                    else if (p > 0 && p < 100) s = 'en_progreso';
-                    else if (p === 100) s = 'completado';
+                    const p = Number(e.target.value); let s = form.status;
+                    if (p === 0) s = 'pendiente'; else if (p > 0 && p < 100) s = 'en_progreso'; else if (p === 100) s = 'completado';
                     setForm(f => ({ ...f, progress: p, status: s }));
                   }} 
                 />
@@ -773,14 +820,38 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
               <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                Tecnologías Adicionales
+                Responsables por Tecnología
               </p>
               <div className="grid grid-cols-2 gap-4">
                 {techCols.map(col => (
-                  <div key={col.col_key}>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">{col.name}</label>
-                    <input placeholder="Valor / Responsable" className="w-full border rounded px-3 py-1.5 text-sm bg-white outline-none focus:border-blue-500"
-                      value={techVals[col.col_key] ?? ''} onChange={e => setTechVals(v => ({ ...v, [col.col_key]: e.target.value }))} />
+                  <div key={col.col_key} className="bg-white p-3 border rounded shadow-sm">
+                    <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-2">{col.name}</label>
+                    <div className="max-h-24 overflow-y-auto space-y-1.5 pr-2">
+                      {projectMembers.length === 0 ? (
+                        <p className="text-[10px] text-gray-400 italic">Cargando o sin miembros...</p>
+                      ) : projectMembers.map((member: any) => {
+                        const isChecked = techVals[col.col_key]?.includes(member.id)
+                        return (
+                          <label key={member.id} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-blue-600 transition-colors">
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={(e) => {
+                                setTechVals(prev => {
+                                  const current = prev[col.col_key] || []
+                                  return {
+                                    ...prev,
+                                    [col.col_key]: e.target.checked ? [...current, member.id] : current.filter(id => id !== member.id)
+                                  }
+                                })
+                              }}
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            {member.name}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 ))}
               </div>

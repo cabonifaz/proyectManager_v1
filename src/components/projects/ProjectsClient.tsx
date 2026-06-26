@@ -23,6 +23,13 @@ interface Project {
   obs_completadas: number
 }
 
+interface User {
+  id: number
+  name: string
+  email: string
+  role: string
+}
+
 const STATUS_COLORS: Record<string, string> = {
   activo:     'bg-green-100 text-green-700',
   pausado:    'bg-yellow-100 text-yellow-700',
@@ -66,6 +73,9 @@ export function ProjectsClient({ tenant, role, userId }: {
   const [search, setSearch]         = useState('')
   const [statusFilter, setStatus]   = useState('')
   const [viewMode, setViewMode]     = useState<'grid' | 'list'>('grid')
+
+  // 🚀 ESTADO NUEVO: Control del Modal de Miembros
+  const [membersModalProject, setMembersModalProject] = useState<Project | null>(null)
 
   const isSuperAdmin = role === 'super_admin'
   const isGestor     = role === 'gestor_proyecto'
@@ -135,7 +145,6 @@ export function ProjectsClient({ tenant, role, userId }: {
     }
   }
 
-  // 🚀 NUEVO: Función para navegar a la vista de observaciones
   function handleGoToObs(project: Project) {
     router.push(`/${tenant}/observaciones?projectId=${project.id}`)
   }
@@ -212,7 +221,8 @@ export function ProjectsClient({ tenant, role, userId }: {
               canEdit={canEditProject(p)}
               canDelete={canDelete}
               onGoToBoard={() => handleGoToBoard(p)}
-              onGoToObs={() => handleGoToObs(p)} // 🚀 Se pasa la función al componente
+              onGoToObs={() => handleGoToObs(p)}
+              onOpenMembers={() => setMembersModalProject(p)} // 🚀 Abrir modal
               onEdit={() => { setEditItem(p); setShowForm(true) }}
               onDelete={() => handleDelete(p.id)}
             />
@@ -254,8 +264,7 @@ export function ProjectsClient({ tenant, role, userId }: {
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2">
                       <div className="w-20 bg-gray-200 rounded-full h-1.5">
-                        <div className="bg-blue-500 h-1.5 rounded-full"
-                          style={{ width: `${p.avg_progress}%` }} />
+                        <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${p.avg_progress}%` }} />
                       </div>
                       <span className="text-xs text-gray-500">{p.avg_progress}%</span>
                     </div>
@@ -271,7 +280,6 @@ export function ProjectsClient({ tenant, role, userId }: {
                   </td>
                   <td className="px-4 py-2">
                     <div className="flex gap-3 justify-end items-center">
-                      {/* 🚀 NUEVO: Botón de observaciones en la vista de lista */}
                       {p.obs_total > 0 && (
                         <button onClick={() => handleGoToObs(p)}
                           className="text-[11px] text-orange-600 font-bold hover:text-orange-800 transition-colors bg-orange-50 hover:bg-orange-100 px-2 py-1 rounded">
@@ -281,25 +289,15 @@ export function ProjectsClient({ tenant, role, userId }: {
                       
                       {canEditProject(p) && (
                         <>
-                          <button onClick={() => handleGoToBoard(p)}
-                            className="text-xs text-blue-600 hover:underline whitespace-nowrap">
+                          <button onClick={() => setMembersModalProject(p)} className="text-xs text-indigo-600 hover:underline font-medium">👥 Miembros</button>
+                          <button onClick={() => handleGoToBoard(p)} className="text-xs text-blue-600 hover:underline whitespace-nowrap">
                             Ver {p.methodology === 'scrum' ? 'Backlog' : 'Gantt'}
                           </button>
-                          <button
-                            onClick={() => { setEditItem(p); setShowForm(true) }}
-                            className="text-xs text-gray-600 hover:underline"
-                          >
-                            Editar
-                          </button>
+                          <button onClick={() => { setEditItem(p); setShowForm(true) }} className="text-xs text-gray-600 hover:underline">Editar</button>
                         </>
                       )}
                       {canDelete && (
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          className="text-xs text-red-500 hover:underline"
-                        >
-                          Eliminar
-                        </button>
+                        <button onClick={() => handleDelete(p.id)} className="text-xs text-red-500 hover:underline">Eliminar</button>
                       )}
                     </div>
                   </td>
@@ -318,16 +316,27 @@ export function ProjectsClient({ tenant, role, userId }: {
           onSaved={() => { setShowForm(false); fetchProjects() }}
         />
       )}
+
+      {/* 🚀 MODAL NUEVO: Gestor de Miembros */}
+      {membersModalProject && (
+        <ProjectMembersModal
+          tenant={tenant}
+          project={membersModalProject}
+          onClose={() => setMembersModalProject(null)}
+        />
+      )}
     </div>
   )
 }
 
-function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, onEdit, onDelete }: {
+// ── Componente Tarjeta ────────────────────────────────────────────────────────
+function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, onOpenMembers, onEdit, onDelete }: {
   project: Project
   canEdit: boolean
   canDelete: boolean
   onGoToBoard: () => void 
-  onGoToObs: () => void // 🚀 Recibe la función
+  onGoToObs: () => void
+  onOpenMembers: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -384,30 +393,17 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, o
             {obsTotal > 0 ? (
               <>
                 <div className="flex justify-between items-end mb-1">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                    Resolución de Obs.
-                  </span>
-                  {/* 🚀 NUEVO: Botón de navegación dinámico */}
-                  <button 
-                    onClick={onGoToObs}
-                    className="text-[10px] font-bold text-orange-600 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded transition-colors uppercase tracking-widest"
-                  >
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Resolución de Obs.</span>
+                  <button onClick={onGoToObs} className="text-[10px] font-bold text-orange-600 bg-orange-50 hover:bg-orange-100 px-2 py-0.5 rounded transition-colors uppercase tracking-widest">
                     Ver Detalle ›
                   </button>
                 </div>
-                
                 <div className="w-full bg-gray-100 rounded-full h-1.5">
-                  <div 
-                    className="bg-orange-400 h-1.5 rounded-full transition-all duration-500" 
-                    style={{ width: `${obsPct}%` }} 
-                  />
+                  <div className="bg-orange-400 h-1.5 rounded-full transition-all duration-500" style={{ width: `${obsPct}%` }} />
                 </div>
-                
                 <div className="flex justify-between text-[10px] mt-1 text-gray-400">
                   <span>{obsCompletadas} de {obsTotal} resueltas</span>
-                  <span className="text-orange-600 font-bold">
-                    {obsAbiertas} abierta{obsAbiertas !== 1 ? 's' : ''}
-                  </span>
+                  <span className="text-orange-600 font-bold">{obsAbiertas} abierta{obsAbiertas !== 1 ? 's' : ''}</span>
                 </div>
               </>
             ) : (
@@ -428,11 +424,11 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, o
         </div>
       </div>
 
-      <div className="flex gap-3 pt-3 border-t mt-auto pl-2">
+      <div className="flex flex-wrap gap-3 pt-3 border-t mt-auto pl-2 items-center">
         {canEdit && (
           <>
-            <button onClick={onGoToBoard} 
-              className="text-xs text-blue-600 font-bold hover:text-blue-800 transition-colors uppercase tracking-wider">
+            <button onClick={onOpenMembers} className="text-xs text-indigo-600 hover:text-indigo-800 font-bold uppercase tracking-wider bg-indigo-50 px-2 py-1 rounded">👥 Miembros</button>
+            <button onClick={onGoToBoard} className="text-xs text-blue-600 font-bold hover:text-blue-800 transition-colors uppercase tracking-wider">
               Ver {p.methodology === 'scrum' ? 'Backlog' : 'Gantt'}
             </button>
             <button onClick={onEdit} className="text-xs text-gray-500 hover:text-gray-800 transition-colors font-medium">Editar</button>
@@ -446,11 +442,9 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, o
   )
 }
 
+// ── Componente Formulario Edición de Proyectos ──────────────────────────────────
 function ProjectForm({ tenant, item, onClose, onSaved }: {
-  tenant: string
-  item: Project | null
-  onClose: () => void
-  onSaved: () => void
+  tenant: string; item: Project | null; onClose: () => void; onSaved: () => void
 }) {
   const [autoCode, setAutoCode] = useState(!item)
   const [form, setForm] = useState({
@@ -509,11 +503,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
         </div>
 
         <div className="p-6">
-          {error && (
-            <div className="mb-5 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 rounded text-sm font-medium">
-              {error}
-            </div>
-          )}
+          {error && <div className="mb-5 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 rounded text-sm font-medium">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -524,11 +514,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                 value={form.name}
                 onChange={e => {
                   const name = e.target.value
-                  setForm(f => ({
-                    ...f,
-                    name,
-                    code: autoCode ? generateCode(name) : f.code,
-                  }))
+                  setForm(f => ({ ...f, name, code: autoCode ? generateCode(name) : f.code }))
                 }}
               />
             </div>
@@ -550,11 +536,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                     if (!autoCode) setForm(f => ({ ...f, code: generateCode(f.name) }))
                     setAutoCode(v => !v)
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs border whitespace-nowrap transition-colors font-medium ${
-                    autoCode
-                      ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                      : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
-                  }`}
+                  className={`px-3 py-1.5 rounded-lg text-xs border whitespace-nowrap transition-colors font-medium ${autoCode ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
                 >
                   {autoCode ? '✎ Personalizar' : '↺ Auto'}
                 </button>
@@ -562,8 +544,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* 🚀 RESTAURADO: Selector de Metodología
-              <div>
+              {/* <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Metodología</label>
                 <select
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-semibold text-blue-700 bg-blue-50 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
@@ -587,7 +568,7 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                   <option value="completado">Completado</option>
                   <option value="archivado">Archivado</option>
                 </select>
-              </div> 
+              </div>
             </div>
 
             <div>
@@ -622,16 +603,137 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
             </div>
 
             <div className="flex justify-end gap-3 pt-5 mt-2 border-t border-gray-100">
-              <button type="button" onClick={onClose}
-                className="px-5 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors">
-                Cancelar
-              </button>
-              <button type="submit" disabled={saving}
-                className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                {saving ? 'Guardando...' : 'Guardar Proyecto'}
-              </button>
+              <button type="button" onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
+              <button type="submit" disabled={saving} className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow hover:bg-blue-700 disabled:opacity-50 transition-colors">{saving ? 'Guardando...' : 'Guardar Proyecto'}</button>
             </div>
           </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Componente Nuevo Modal Miembros del Proyecto ──────────────────────────────────
+function ProjectMembersModal({ tenant, project, onClose }: {
+  tenant: string; project: Project; onClose: () => void
+}) {
+  const [users, setUsers] = useState<User[]>([])
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        // Obtenemos a TODOS los usuarios del sistema
+        const resUsers = await fetch(`/api/${tenant}/users`)
+        const jsonUsers = await resUsers.json()
+        
+        // Obtenemos solo a los asignados a este proyecto
+        const resMembers = await fetch(`/api/${tenant}/projects/${project.id}/members`)
+        const jsonMembers = await resMembers.json()
+
+        if (resUsers.ok && resMembers.ok) {
+          setUsers(jsonUsers.data ?? [])
+          // Pre-marcamos a los que ya están en el proyecto
+          const memberIds = (jsonMembers.data ?? []).map((m: any) => m.user_id)
+          setSelectedIds(memberIds)
+        } else {
+          setError('Error al cargar datos del sistema')
+        }
+      } catch {
+        setError('Error de conexión')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [tenant, project.id])
+
+  const toggleUser = (userId: number) => {
+    setSelectedIds(prev => 
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    )
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/${tenant}/projects/${project.id}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: selectedIds })
+      })
+
+      if (!res.ok) {
+        const json = await res.json()
+        setError(json.error ?? 'Error al guardar miembros')
+        setSaving(false)
+        return
+      }
+      onClose()
+    } catch {
+      setError('Error de red al guardar')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50 shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Miembros del Proyecto</h2>
+            <p className="text-xs text-gray-500 mt-0.5 font-mono">{project.code} — {project.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl font-bold">&times;</button>
+        </div>
+
+        <div className="p-6 overflow-y-auto flex-1">
+          {error && <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 rounded text-sm font-medium">{error}</div>}
+
+          {loading ? (
+            <p className="text-center text-sm text-gray-400 py-10">Cargando usuarios...</p>
+          ) : users.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-10 italic">No hay usuarios registrados en el sistema.</p>
+          ) : (
+            <div className="space-y-2">
+              {users.map(user => {
+                const isSelected = selectedIds.includes(user.id)
+                return (
+                  <label 
+                    key={user.id} 
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all cursor-pointer select-none ${
+                      isSelected ? 'border-indigo-500 bg-indigo-50/50 shadow-sm' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                      checked={isSelected}
+                      onChange={() => toggleUser(user.id)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-bold truncate ${isSelected ? 'text-indigo-900' : 'text-gray-800'}`}>{user.name}</p>
+                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                    </div>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 bg-white px-2 py-1 border rounded shadow-sm">
+                      {user.role.replace('_', ' ')}
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 px-6 py-4 border-t bg-gray-50 shrink-0">
+          <button onClick={onClose} disabled={saving} className="px-5 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
+          <button onClick={handleSave} disabled={saving || loading} className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+            {saving ? 'Guardando...' : `Asignar ${selectedIds.length} miembro(s)`}
+          </button>
         </div>
       </div>
     </div>

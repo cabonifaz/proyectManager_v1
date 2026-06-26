@@ -606,10 +606,22 @@ function ActiveSprintDevLoad({ tenant, projectId, sprintNum }: { tenant: string,
           }
           
           if (Array.isArray(techCols)) {
-            techCols.forEach((tc) => {
-              const dev = tc.value?.trim()
-              if (dev && dev !== '-' && dev.toLowerCase() !== 'n/a' && dev.toLowerCase() !== 'na') {
-                load[dev] = (load[dev] || 0) + 1
+            techCols.forEach((tc: any) => {
+              // 🚀 1. Priorizamos los usuarios reales de los checkboxes
+              const users = tc.assigned_users || []
+              if (users.length > 0) {
+                users.forEach((u: any) => {
+                  load[u.name] = (load[u.name] || 0) + 1
+                })
+              } else {
+                // 🚀 2. Fallback: Si no hay checkboxes, procesamos el texto antiguo (separándolo por comas si aplica)
+                const devText = tc.value?.trim()
+                if (devText && devText !== '-' && devText.toLowerCase() !== 'n/a' && devText.toLowerCase() !== 'na') {
+                  devText.split(',').forEach((d: string) => {
+                    const cleanName = d.trim()
+                    if (cleanName) load[cleanName] = (load[cleanName] || 0) + 1
+                  })
+                }
               }
             })
           }
@@ -872,14 +884,25 @@ function TicketTalents({ tenant, projectId, itemCode }: { tenant: string, projec
           
           const devs: string[] = []
           if (Array.isArray(techCols)) {
-            techCols.forEach((tc) => {
-              const dev = tc.value?.trim()
-              if (dev && dev !== '-' && dev.toLowerCase() !== 'n/a' && dev.toLowerCase() !== 'na') {
-                devs.push(dev)
+            techCols.forEach((tc: any) => {
+              // 🚀 1. Priorizamos los usuarios reales de los checkboxes
+              const users = tc.assigned_users || []
+              if (users.length > 0) {
+                users.forEach((u: any) => devs.push(u.name))
+              } else {
+                // 🚀 2. Fallback al texto antiguo
+                const devText = tc.value?.trim()
+                if (devText && devText !== '-' && devText.toLowerCase() !== 'n/a' && devText.toLowerCase() !== 'na') {
+                  devText.split(',').forEach((d: string) => {
+                    const cleanName = d.trim()
+                    if (cleanName) devs.push(cleanName)
+                  })
+                }
               }
             })
           }
-          setTalents(devs)
+          // Removemos duplicados por si acaso
+          setTalents(Array.from(new Set(devs)))
         }
       } catch (e) {
         // Silencioso

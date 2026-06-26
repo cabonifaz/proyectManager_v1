@@ -11,7 +11,13 @@ interface Sprint {
   days_remaining: number | null
 }
 interface TechCol { id: number; col_key: string; name: string; col_type: string }
-interface TechVal { col_key: string; name: string; value: string; eta: string | null }
+interface TechVal { 
+  col_key: string; 
+  name: string; 
+  value?: string; 
+  eta: string | null; 
+  assigned_users?: { id: number; name: string; role: string }[] | null 
+}
 interface SprintItem {
   id: number; code: string; module: string; description: string
   progress: number; status: string; sprint_num: number | null
@@ -527,9 +533,16 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                       </td>
                       {techCols.map(col => {
                         const val = item.tech_columns?.find(t => t.col_key === col.col_key)
+                        const users = val?.assigned_users || []
+                        const manualValue = val?.value || ''
+                        
                         return (
                           <td key={col.col_key} className="px-3 py-2 text-xs">
-                            <div className="text-gray-700 whitespace-nowrap">{val?.value || '—'}</div>
+                            <div className="text-gray-700 whitespace-nowrap">
+                              {users.length > 0 
+                                ? users.map(u => u.name).join(', ') 
+                                : manualValue ? manualValue : '—'}
+                            </div>
                           </td>
                         )
                       })}
@@ -592,8 +605,8 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
         />
       )}
 
-      {showItemForm && editItem && (
-        <SprintItemForm tenant={tenant} item={editItem} techCols={techCols} members={members}
+      {showItemForm && editItem && projectId && (
+        <SprintItemForm tenant={tenant} projectId={projectId} item={editItem} techCols={techCols} members={members}
           onClose={() => { setShowItemForm(false); setEditItem(null) }}
           onSaved={() => { setShowItemForm(false); setEditItem(null); fetchItems() }}
         />
@@ -768,7 +781,7 @@ function ReorderSprintItemsModal({ tenant, sprint, items, onClose }: { tenant: s
 }
 
 // ── Sprint Item Form ────────────────────────────────────────────────────────
-function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: { tenant: string; item: SprintItem; techCols: TechCol[]; members: Member[]; onClose: () => void; onSaved: () => void }) {
+function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, onSaved }: { tenant: string; projectId: number; item: SprintItem; techCols: TechCol[]; members: Member[]; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState({
     code:        item.code, 
     progress:    item.progress,
@@ -778,14 +791,27 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
     priority:    item.priority ?? 0,
     review_date: item.review_date ? item.review_date.toString().slice(0, 10) : '',
   })
-  const [techVals, setTechVals] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {}
+  
+  // 1. Array de IDs por cada tecnología
+// 1. Cargamos los IDs que vienen de la Base de Datos para pre-marcar los checks
+  const [techVals, setTechVals] = useState<Record<string, number[]>>(() => {
+    const init: Record<string, number[]> = {}
     techCols.forEach(col => {
-      const existing = item.tech_columns?.find(t => t.col_key === col.col_key)
-      init[col.col_key] = existing?.value ?? ''
+      const existingCol = item.tech_columns?.find(t => t.col_key === col.col_key)
+      // Extraemos solo los números de ID del JSON que manda el SP
+      init[col.col_key] = (existingCol as any)?.assigned_users?.map((u: any) => u.id) || []
     })
     return init
   })
+
+  // 2. Estado y Fetch para cargar solo a los miembros del proyecto
+  const [projectMembers, setProjectMembers] = useState<any[]>([])
+  useEffect(() => {
+    fetch(`/api/${tenant}/projects/${projectId}/members`)
+      .then(res => res.json())
+      .then(data => setProjectMembers(data.data ?? []))
+  }, [tenant, projectId])
+
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
 
@@ -816,12 +842,16 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
       const techErrors: string[] = []
       await Promise.all(
         techCols.map(async col => {
-          const val = techVals[col.col_key]
-          if (!val) return
-          const r = await fetch(`/api/${tenant}/backlog/${item.id}/tech`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ columnId: col.id, value: val || null, eta: null }),
+          const selectedUserIds = techVals[col.col_key] || []
+          
+          
+          // Apuntamos a la ruta respetando [id] del sprint y [itemId]
+          const r = await fetch(`/api/${tenant}/sprints/${item.sprint_num || 0}/items/${item.id}/assign`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ columnId: col.id, userIds: selectedUserIds }),
           })
+          
           if (!r.ok) {
             const rj = await r.json()
             techErrors.push(`${col.name}: ${rj.error}`)
@@ -895,13 +925,42 @@ function SprintItemForm({ tenant, item, techCols, members, onClose, onSaved }: {
           {techCols.length > 0 && (
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
               <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span> Tecnologías / Responsables
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span> Responsables por Tecnología
               </p>
               <div className="grid grid-cols-2 gap-4">
                 {techCols.map(col => (
-                  <div key={col.col_key}>
-                    <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-1">{col.name}</label>
-                    <input placeholder="Ej: Juan Perez" className="w-full border rounded-lg px-3 py-2 text-sm bg-white outline-none focus:border-blue-500" value={techVals[col.col_key] ?? ''} onChange={e => setTechVals(v => ({ ...v, [col.col_key]: e.target.value }))} />
+                  <div key={col.col_key} className="bg-white p-3 border rounded shadow-sm">
+                    <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-2">{col.name}</label>
+                    <div className="max-h-24 overflow-y-auto space-y-1.5 pr-2">
+                      {projectMembers.length === 0 ? (
+                        <p className="text-[10px] text-gray-400 italic">Sin miembros asignados al proyecto</p>
+                      ) : projectMembers.map((member: any) => {
+                        // Relacionar ID con el nombre real del usuario usando la prop "members"
+                        const userInfo = members.find(m => m.id === member.user_id)
+                        if (!userInfo) return null;
+                        
+                        const isChecked = techVals[col.col_key]?.includes(userInfo.id)
+                        return (
+                          <label key={userInfo.id} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-blue-600 transition-colors">
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={(e) => {
+                                setTechVals(prev => {
+                                  const current = prev[col.col_key] || []
+                                  return {
+                                    ...prev,
+                                    [col.col_key]: e.target.checked ? [...current, userInfo.id] : current.filter(id => id !== userInfo.id)
+                                  }
+                                })
+                              }}
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            {userInfo.name}
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 ))}
               </div>

@@ -49,31 +49,81 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
       [ctx.tenantId, pid, pid],
     )
 
-    // Estadísticas por desarrollador (desde backlog_item_tech)
-    const devStats = await query<RowDataPacket>(
-      `SELECT
-         bit.value                                                                   AS developer_name,
-         COUNT(*)                                                                    AS total,
-         SUM(bi.status = 'completado')                                              AS completado,
-         SUM(bi.status = 'en_progreso')                                             AS en_progreso,
-         SUM(bi.status = 'en_revision')                                             AS en_revision,
-         SUM(bi.status = 'pendiente')                                               AS pendiente,
-         SUM(bi.status = 'bloqueado')                                               AS bloqueado,
-         SUM(bi.eta < CURDATE() AND bi.status NOT IN ('completado'))               AS vencidas,
-         ROUND(AVG(bi.progress), 0)                                                 AS avg_progress
-       FROM backlog_item_tech bit
-       INNER JOIN backlog_items bi ON bi.id  = bit.backlog_item_id
-       INNER JOIN projects      p  ON p.id   = bi.project_id
-       WHERE p.tenant_id     = ?
-         AND bit.value       IS NOT NULL
-         AND bit.value       != ''
-         AND bi.deleted_at   IS NULL
-         AND bit.deleted_at  IS NULL
-         AND (? IS NULL OR bi.project_id = ?)
-       GROUP BY bit.value
-       ORDER BY total DESC`,
-      [ctx.tenantId, pid, pid],
+    // 🚀 Estadísticas por desarrollador (Convivencia: Nueva tabla + Texto antiguo)
+    const rawDevItems = await query<RowDataPacket>(
+      `SELECT 
+         bi.id,
+         bi.status,
+         bi.progress,
+         (bi.eta < CURDATE() AND bi.status != 'completado') AS is_vencida,
+         COALESCE(bit.value, '') AS legacy_value,
+         (
+            SELECT JSON_ARRAYAGG(u.name)
+            FROM sprint_items si
+            INNER JOIN sprint_item_tech_users situ ON situ.sprint_item_id = si.id
+            INNER JOIN users u ON u.id = situ.user_id
+            WHERE si.backlog_item_id = bi.id 
+              AND situ.column_id = c.id 
+              AND situ.deleted_at IS NULL
+              AND si.deleted_at IS NULL
+         ) AS assigned_users
+       FROM project_columns c
+       INNER JOIN backlog_items bi ON bi.project_id = c.project_id
+       LEFT JOIN backlog_item_tech bit ON bit.backlog_item_id = bi.id AND bit.column_id = c.id AND bit.deleted_at IS NULL
+       INNER JOIN projects p ON p.id = bi.project_id
+       WHERE p.tenant_id = ?
+         AND c.active = 1 AND c.deleted_at IS NULL
+         AND bi.deleted_at IS NULL
+         AND (? IS NULL OR bi.project_id = ?)`,
+      [ctx.tenantId, pid, pid]
     )
+
+    // Agrupamos los datos en memoria para separar nombres con comas
+    const statsMap = new Map<string, any>()
+
+    for (const row of rawDevItems as any[]) {
+      let devs: string[] = []
+
+      // 1. Extraemos los usuarios de la tabla nueva (Si usaste checkboxes)
+      if (row.assigned_users) {
+        const parsed = typeof row.assigned_users === 'string' ? JSON.parse(row.assigned_users) : row.assigned_users
+        if (Array.isArray(parsed) && parsed.length > 0) devs = parsed
+      }
+
+      // 2. Fallback: Si no hay checkboxes, procesamos el texto antiguo y lo dividimos por comas
+      if (devs.length === 0 && row.legacy_value) {
+        const devText = row.legacy_value.trim()
+        if (devText && devText !== '-' && devText.toLowerCase() !== 'n/a' && devText.toLowerCase() !== 'na') {
+          devs = devText.split(',').map((d: string) => d.trim()).filter((d: string) => d)
+        }
+      }
+
+      // 3. Contabilizamos las estadísticas por cada desarrollador individual
+      for (const dev of devs) {
+        if (!statsMap.has(dev)) {
+          statsMap.set(dev, {
+            developer_name: dev, total: 0, completado: 0, en_progreso: 0,
+            en_revision: 0, pendiente: 0, bloqueado: 0, vencidas: 0, _sum_progress: 0
+          })
+        }
+        const stat = statsMap.get(dev)
+        stat.total += 1
+        if (row.status === 'completado') stat.completado += 1
+        if (row.status === 'en_progreso') stat.en_progreso += 1
+        if (row.status === 'en_revision') stat.en_revision += 1
+        if (row.status === 'pendiente') stat.pendiente += 1
+        if (row.status === 'bloqueado') stat.bloqueado += 1
+        if (row.is_vencida) stat.vencidas += 1
+        stat._sum_progress += Number(row.progress) || 0
+      }
+    }
+
+    // Calculamos el promedio final y ordenamos de mayor a menor carga
+    const devStats = Array.from(statsMap.values()).map(s => {
+      s.avg_progress = s.total > 0 ? Math.round(s._sum_progress / s.total) : 0
+      delete s._sum_progress
+      return s
+    }).sort((a, b) => b.total - a.total)
 
     return NextResponse.json({
       projects:        results[0] ?? [],
