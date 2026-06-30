@@ -67,8 +67,8 @@ export async function GET(req: NextRequest) {
       // Creamos los marcadores exactos (?, ?, ?) para evitar crasheos de sintaxis SQL
       const placeholders = itemIds.map(() => '?').join(',');
       
-      // 🚀 CORRECCIÓN CRÍTICA: Partimos de project_columns y hacemos LEFT JOIN.
-      // Esto asegura que las tecnologías vacías manuales igual procesen sus checkboxes asignados.
+// 🚀 CORRECCIÓN CRÍTICA: Partimos de project_columns y hacemos LEFT JOIN.
+      // Ahora leemos DIRECTO desde sprint_item_tech_users usando backlog_item_id
       const techRows = await query<RowDataPacket>(
         `SELECT 
             bi.id AS backlog_item_id, 
@@ -79,13 +79,11 @@ export async function GET(req: NextRequest) {
             t.eta,
             (
                 SELECT JSON_ARRAYAGG(JSON_OBJECT('id', u.id, 'name', u.name, 'role', u.role))
-                FROM sprint_items si
-                INNER JOIN sprint_item_tech_users situ ON situ.sprint_item_id = si.id
+                FROM sprint_item_tech_users situ
                 INNER JOIN users u ON u.id = situ.user_id
-                WHERE si.backlog_item_id = bi.id 
+                WHERE situ.backlog_item_id = bi.id 
                   AND situ.column_id = c.id 
                   AND situ.deleted_at IS NULL
-                  AND si.deleted_at IS NULL
             ) as assigned_users
          FROM project_columns c
          INNER JOIN backlog_items bi ON bi.project_id = c.project_id
