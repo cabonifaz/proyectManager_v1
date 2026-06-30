@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       rawItems = results[0] ?? []
     }
 
-    // 🚀 PARCHE SUPER SEGURO: Inyectamos TODAS las columnas sin romper la librería
+// 🚀 PARCHE SUPER SEGURO: Inyectamos TODAS las columnas y los nuevos responsables
     if (rawItems.length > 0) {
       // 1. Clonamos los items a objetos nativos para quitar la restricción de "Solo Lectura"
       rawItems = rawItems.map(item => ({ ...item }));
@@ -67,23 +67,50 @@ export async function GET(req: NextRequest) {
       // Creamos los marcadores exactos (?, ?, ?) para evitar crasheos de sintaxis SQL
       const placeholders = itemIds.map(() => '?').join(',');
       
+// 🚀 CORRECCIÓN CRÍTICA: Partimos de project_columns y hacemos LEFT JOIN.
+      // Ahora leemos DIRECTO desde sprint_item_tech_users usando backlog_item_id
       const techRows = await query<RowDataPacket>(
-        `SELECT t.backlog_item_id, c.col_key, c.name, t.value, t.eta 
-         FROM backlog_item_tech t
-         JOIN project_columns c ON t.column_id = c.id
-         WHERE t.backlog_item_id IN (${placeholders}) AND c.deleted_at IS NULL`,
-        [...itemIds] // <-- Pasamos los IDs desestructurados
+        `SELECT 
+            bi.id AS backlog_item_id, 
+            c.id AS column_id,
+            c.col_key, 
+            c.name, 
+            COALESCE(t.value, '') AS value, 
+            t.eta,
+            (
+                SELECT JSON_ARRAYAGG(JSON_OBJECT('id', u.id, 'name', u.name, 'role', u.role))
+                FROM sprint_item_tech_users situ
+                INNER JOIN users u ON u.id = situ.user_id
+                WHERE situ.backlog_item_id = bi.id 
+                  AND situ.column_id = c.id 
+                  AND situ.deleted_at IS NULL
+            ) as assigned_users
+         FROM project_columns c
+         INNER JOIN backlog_items bi ON bi.project_id = c.project_id
+         LEFT JOIN backlog_item_tech t ON t.backlog_item_id = bi.id AND t.column_id = c.id AND t.deleted_at IS NULL
+         WHERE bi.id IN (${placeholders}) AND c.active = 1 AND c.deleted_at IS NULL`,
+        [...itemIds]
       );
 
       // Mapeamos las tecnologías
       const techMap = new Map<number, any[]>();
-      for (const row of techRows) {
+      
+      for (const row of techRows as any[]) {
         if (!techMap.has(row.backlog_item_id)) techMap.set(row.backlog_item_id, []);
+        
+        let parsedUsers = [];
+        if (row.assigned_users) {
+          parsedUsers = typeof row.assigned_users === 'string' 
+            ? JSON.parse(row.assigned_users) 
+            : row.assigned_users;
+        }
+
         techMap.get(row.backlog_item_id)!.push({
           col_key: row.col_key,
           name: row.name,
           value: row.value,
-          eta: row.eta
+          eta: row.eta,
+          assigned_users: parsedUsers
         });
       }
 
