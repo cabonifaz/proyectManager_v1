@@ -17,6 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         p_value:     body.value   ?? null,
         p_eta:       body.eta     ?? null,
         p_user_id:   ctx.userId,
+        p_user_ids:  body.userIds ? JSON.stringify(body.userIds) : '[]', // 🚀 NUEVO PARÁMETRO: Convertimos el array a JSON
       },
       ['p_error'],
     )

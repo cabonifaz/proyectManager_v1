@@ -804,13 +804,49 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
     return init
   })
 
-  // 2. Estado y Fetch para cargar solo a los miembros del proyecto
+// 2. Estado y Fetch para cargar solo a los miembros del proyecto
   const [projectMembers, setProjectMembers] = useState<any[]>([])
   useEffect(() => {
     fetch(`/api/${tenant}/projects/${projectId}/members`)
       .then(res => res.json())
       .then(data => setProjectMembers(data.data ?? []))
   }, [tenant, projectId])
+
+  // 🚀 NUEVO: Recuperación asíncrona de estado para marcar los checkboxes
+  useEffect(() => {
+    if (projectMembers.length === 0) return;
+
+    setTechVals(prev => {
+      const next = { ...prev };
+      let changed = false;
+
+      techCols.forEach(col => {
+        const existing = item.tech_columns?.find(t => t.col_key === col.col_key);
+        const currentIds = next[col.col_key] || [];
+
+        // Si los checkboxes están vacíos pero hay texto guardado
+        if (currentIds.length === 0 && existing?.value) {
+          const savedNames = existing.value.split(',').map(n => n.trim());
+          
+          // Cruzamos los nombres con la lista de miembros para extraer el ID
+          const matchedIds = projectMembers
+            .filter((m: any) => savedNames.includes(m.name?.trim() || ''))
+            .map((m: any) => {
+              const userInfo = members.find(u => u.id === m.user_id);
+              return userInfo ? userInfo.id : null;
+            })
+            .filter(id => id !== null);
+
+          if (matchedIds.length > 0) {
+            next[col.col_key] = matchedIds as number[];
+            changed = true;
+          }
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [projectMembers, item, techCols, members]);
 
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -844,12 +880,20 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
         techCols.map(async col => {
           const selectedUserIds = techVals[col.col_key] || []
           
+          // 🚀 NUEVO: Preparamos los nombres concatenados para la tabla heredada
+          const selectedNames = members
+            .filter(m => selectedUserIds.includes(m.id))
+            .map(m => m.name).join(', ')
           
           // Apuntamos a la ruta respetando [id] del sprint y [itemId]
           const r = await fetch(`/api/${tenant}/sprints/${item.sprint_num || 0}/items/${item.id}/assign`, {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ columnId: col.id, userIds: selectedUserIds }),
+            body: JSON.stringify({ 
+              columnId: col.id, 
+              userIds: selectedUserIds,
+              value: selectedNames || null // 🚀 Se envía el texto de respaldo
+            }),
           })
           
           if (!r.ok) {
