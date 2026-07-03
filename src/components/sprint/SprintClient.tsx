@@ -880,20 +880,11 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
         techCols.map(async col => {
           const selectedUserIds = techVals[col.col_key] || []
           
-          // 🚀 NUEVO: Preparamos los nombres concatenados para la tabla heredada
-          const selectedNames = members
-            .filter(m => selectedUserIds.includes(m.id))
-            .map(m => m.name).join(', ')
-          
           // Apuntamos a la ruta respetando [id] del sprint y [itemId]
           const r = await fetch(`/api/${tenant}/sprints/${item.sprint_num || 0}/items/${item.id}/assign`, {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              columnId: col.id, 
-              userIds: selectedUserIds,
-              value: selectedNames || null // 🚀 Se envía el texto de respaldo
-            }),
+            body: JSON.stringify({ columnId: col.id, userIds: selectedUserIds }),
           })
           
           if (!r.ok) {

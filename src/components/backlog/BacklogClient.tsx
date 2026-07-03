@@ -720,7 +720,7 @@ const itemId = item?.id ?? json.id
       const techErrors: string[] = []
 
       // 🚀 3. LOGICA DE DOBLE GUARDADO (CONVIVENCIA Y SINCRONIZACIÓN)
-      await Promise.all(
+           await Promise.all(
         techCols.map(async col => {
           const selectedIds = techVals[col.col_key] || []
           // Concatenamos los nombres para guardarlos en la tabla vieja como backup

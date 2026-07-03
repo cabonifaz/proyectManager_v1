@@ -11,16 +11,16 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     const searchParams = req.nextUrl.searchParams
     const sprintNum = searchParams.get('sprint')
 
-    // Consulta base: Busca a todos los desarrolladores del proyecto
+    // 🚀 NUEVA CONSULTA: Leemos directo de sprint_item_tech_users y cruzamos con users
     let sql = `
-      SELECT DISTINCT bit.value AS name
-      FROM backlog_item_tech bit
-      INNER JOIN backlog_items bi ON bi.id = bit.backlog_item_id
+      SELECT DISTINCT u.name
+      FROM sprint_item_tech_users situ
+      INNER JOIN users u ON u.id = situ.user_id
+      INNER JOIN backlog_items bi ON bi.id = situ.backlog_item_id
       WHERE bi.project_id   = ?
-        AND bit.value       IS NOT NULL
-        AND bit.value       != ''
+        AND situ.deleted_at IS NULL
         AND bi.deleted_at   IS NULL
-        AND bit.deleted_at  IS NULL
+        AND u.deleted_at    IS NULL
     `;
     const queryParams: any[] = [Number(params.id)];
 
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
       queryParams.push(Number(sprintNum));
     }
 
-    sql += ` ORDER BY bit.value`;
+    sql += ` ORDER BY u.name`;
 
     const rows = await query<RowDataPacket>(sql, queryParams);
 
