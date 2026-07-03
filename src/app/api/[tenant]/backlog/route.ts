@@ -68,15 +68,24 @@ export async function GET(req: NextRequest) {
       const placeholders = itemIds.map(() => '?').join(',');
       
 // 🚀 CORRECCIÓN CRÍTICA: Partimos de project_columns y hacemos LEFT JOIN.
-      // Ahora leemos DIRECTO desde sprint_item_tech_users usando backlog_item_id
+      // Ahora leemos DIRECTAMENTE desde sprint_item_tech_users, eliminando la dependencia legacy.
       const techRows = await query<RowDataPacket>(
         `SELECT 
             bi.id AS backlog_item_id, 
             c.id AS column_id,
             c.col_key, 
             c.name, 
-            COALESCE(t.value, '') AS value, 
-            t.eta,
+            (
+                SELECT GROUP_CONCAT(u.name SEPARATOR ', ')
+                FROM sprint_item_tech_users situ
+                INNER JOIN users u ON u.id = situ.user_id
+                WHERE situ.backlog_item_id = bi.id AND situ.column_id = c.id AND situ.deleted_at IS NULL
+            ) AS value, 
+            (
+                SELECT MAX(situ.eta)
+                FROM sprint_item_tech_users situ
+                WHERE situ.backlog_item_id = bi.id AND situ.column_id = c.id AND situ.deleted_at IS NULL
+            ) AS eta,
             (
                 SELECT JSON_ARRAYAGG(JSON_OBJECT('id', u.id, 'name', u.name, 'role', u.role))
                 FROM sprint_item_tech_users situ
@@ -87,7 +96,6 @@ export async function GET(req: NextRequest) {
             ) as assigned_users
          FROM project_columns c
          INNER JOIN backlog_items bi ON bi.project_id = c.project_id
-         LEFT JOIN backlog_item_tech t ON t.backlog_item_id = bi.id AND t.column_id = c.id AND t.deleted_at IS NULL
          WHERE bi.id IN (${placeholders}) AND c.active = 1 AND c.deleted_at IS NULL`,
         [...itemIds]
       );

@@ -630,6 +630,38 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     if (projectId) loadMembers()
   }, [tenant, projectId])
 
+  useEffect(() => {
+    if (projectMembers.length === 0) return;
+    
+    setTechVals(prev => {
+      const next = { ...prev };
+      let changed = false;
+
+      techCols.forEach(col => {
+         const existing = item?.tech_columns?.find(t => t.col_key === col.col_key);
+         const currentIds = next[col.col_key] || [];
+
+         // Si los checkboxes están vacíos pero hay nombres en texto guardados en la base de datos
+         if (currentIds.length === 0 && existing?.value) {
+            const savedNames = existing.value.split(',').map(n => n.trim());
+            
+            // Cruzamos los nombres de texto con los IDs reales descargados de la API
+            const matchedIds = projectMembers
+               .filter(m => savedNames.includes(m.name.trim()))
+               .map(m => m.id);
+               
+            if (matchedIds.length > 0) {
+               next[col.col_key] = matchedIds;
+               changed = true;
+            }
+         }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [projectMembers, item, techCols]);
+  // 👆 FIN DEL NUEVO BLOQUE 👆
+
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
   const [loadingCode, setLoadingCode] = useState(false)
@@ -688,7 +720,7 @@ const itemId = item?.id ?? json.id
       const techErrors: string[] = []
 
       // 🚀 3. LOGICA DE DOBLE GUARDADO (CONVIVENCIA Y SINCRONIZACIÓN)
-      await Promise.all(
+           await Promise.all(
         techCols.map(async col => {
           const selectedIds = techVals[col.col_key] || []
           // Concatenamos los nombres para guardarlos en la tabla vieja como backup
@@ -697,10 +729,16 @@ const itemId = item?.id ?? json.id
             .map(m => m.name).join(', ')
 
           // A) Guardamos en la API antigua del Backlog (El Respaldo Histórico)
+          // A) Guardamos en la API antigua del Backlog (El Respaldo Histórico)
           const r1 = await fetch(`/api/${tenant}/backlog/${itemId}/tech`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ columnId: col.id, value: selectedNames || null, eta: null }),
+            body: JSON.stringify({ 
+                columnId: col.id, 
+                value: selectedNames || null, 
+                eta: null,
+                userIds: selectedIds // 🚀 ¡NUEVO!: Enviamos los IDs reales al backend
+            }),
           })
           
           if (!r1.ok) {

@@ -129,7 +129,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       [...backlogRows, ...sprintRows]
         .filter(r => r.codigo && String(r.codigo).trim() !== '')
         .map(r => Number(r.sprint))
-        .filter(n => !isNaN(n) && n >= 0) // Permitimos la creación del Sprint 0
+        .filter(n => !isNaN(n) && n >= 0) 
     )
     
     if (allSprintNums.size > 0) {
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           try {
             await query(
               `INSERT INTO sprints (project_id, number, name, status, created_by, updated_by) 
-               VALUES (?, ?, ?, 'planificado', ?, ?)`,
+                VALUES (?, ?, ?, 'planificado', ?, ?)`,
               [projectId, sNum, `Sprint ${sNum}`, ctx.userId, ctx.userId]
             )
             results.sprints++
@@ -153,6 +153,15 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         }
       }
     }
+
+    // 🚀 OBTENEMOS MIEMBROS PARA TRADUCIR NOMBRES DEL EXCEL A IDs
+    const projectMembers = await query<RowDataPacket>(
+      `SELECT u.id, LOWER(TRIM(u.name)) as name 
+       FROM project_members pm 
+       INNER JOIN users u ON u.id = pm.user_id 
+       WHERE pm.project_id = ? AND pm.deleted_at IS NULL AND u.deleted_at IS NULL`, 
+      [projectId]
+    );
 
    // ── FASE 2: PROCESAR BACKLOG PRINCIPAL ──
     const existingItems = await query<ExistingItem>(
@@ -184,6 +193,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       if (avance === 100) status = 'completado';
 
       const sprintVal = (row.sprint !== undefined && row.sprint !== null && String(row.sprint).trim() !== '') ? Number(row.sprint) : null;
+      const priority = normalizeObsPriority(row.prioridad || row.prio); // 🚀 EXTRAEMOS PRIORIDAD
       
       let itemId: number
 
@@ -198,6 +208,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           p_eta: row.eta ? String(row.eta).trim() : null,
           p_comment: row.comentario ? String(row.comentario).trim() : null,
           p_updated_by: ctx.userId, p_eta_explicit: row.eta ? 1 : 0,
+          p_priority: priority, // 🚀 AÑADIDO PRIORIDAD AL UPDATE
         }, ['p_error'])
 
         if (upd.p_error) { errors.push(`Backlog ${row.codigo}: ${upd.p_error}`); continue }
@@ -227,6 +238,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
             p_progress: avance, p_status: status, 
             p_sprint_num: null, p_eta: null, p_comment: null,
             p_updated_by: ctx.userId, p_eta_explicit: 0,
+            p_priority: priority, // 🚀 AÑADIDO PRIORIDAD AL UPDATE POST-CREATE
           }, ['p_error'])
         }
         results.bCreated++
@@ -255,9 +267,16 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         }
 
         if (val && String(val).trim() !== '' && String(val).trim().toLowerCase() !== 'x') {
+          // 🚀 NUEVA LÓGICA: Traducimos nombres de Excel a IDs para el ecosistema relacional
+          const savedNames = String(val).split(',').map(n => n.trim().toLowerCase());
+          const matchedIds = projectMembers
+            .filter(m => savedNames.includes(m.name))
+            .map(m => m.id);
+
           await callProcedureOut('sp_backlog_tech_upsert', {
             p_tenant_id: ctx.tenantId, p_item_id: itemId, p_column_id: col.id,
             p_value: String(val).trim(), p_eta: null, p_user_id: ctx.userId,
+            p_user_ids: JSON.stringify(matchedIds), // 🚀 AÑADIDO ARRAY JSON
           }, ['p_error'])
         }
       }
@@ -279,7 +298,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         continue
       }
       try {
-        // 🚀 CORRECCIÓN: Prioridad normalizada estrictamente como número (0-10)
         const priority = normalizeObsPriority(row.prioridad || row.prio);
         const reviewDate = row.fech_rev || row['fech rev'] ? String(row.fech_rev || row['fech rev']).trim().substring(0, 10) : null;
         const sprintNum = (row.sprint !== undefined && row.sprint !== null && String(row.sprint).trim() !== '') ? Number(row.sprint) : null;
@@ -360,7 +378,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
         if (existObs.length > 0) {
           currentObsId = existObs[0].id;
           
-          // 🚀 CORRECCIÓN: Usando tu Procedimiento Almacenado oficial
           const updRes: any = await callProcedureOut('sp_observacion_update', {
             p_tenant_id: ctx.tenantId,
             p_id: currentObsId,
@@ -378,7 +395,6 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
           if (updRes.p_error) throw new Error(updRes.p_error);
           results.oUpdated++
         } else {
-          // 🚀 CORRECCIÓN: Usando tu Procedimiento Almacenado en lugar del INSERT manual
           const insRes: any = await callProcedureOut('sp_observacion_create', {
             p_tenant_id: ctx.tenantId,
             p_project_id: projectId,

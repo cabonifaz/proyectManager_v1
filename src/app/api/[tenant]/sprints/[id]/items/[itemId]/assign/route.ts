@@ -46,15 +46,16 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       )
       
       if (exists && exists.length > 0) {
-        // Restaurar registro limpiando las fechas de borrado (sin usar updated_by)
+        // Restaurar registro limpiando las fechas de borrado
         await query(
           'UPDATE sprint_item_tech_users SET deleted_at = NULL, deleted_by = NULL WHERE id = ?',
           [exists[0].id]
         )
       } else {
+        // CORRECCIÓN: Se incorpora backlog_item_id en la instrucción INSERT
         await query(
-          'INSERT INTO sprint_item_tech_users (project_id, sprint_item_id, column_id, user_id, created_by) VALUES (?, ?, ?, ?, ?)',
-          [projectId, realSprintItemId, columnId, uid, ctx.userId]
+          'INSERT INTO sprint_item_tech_users (project_id, backlog_item_id, sprint_item_id, column_id, user_id, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+          [projectId, backlogItemId, realSprintItemId, columnId, uid, ctx.userId]
         )
       }
     }

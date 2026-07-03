@@ -49,27 +49,23 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
       [ctx.tenantId, pid, pid],
     )
 
-    // 🚀 Estadísticas por desarrollador (Convivencia: Nueva tabla + Texto antiguo)
+    // 🚀 Estadísticas por desarrollador (100% Relacional, sin legacy)
     const rawDevItems = await query<RowDataPacket>(
       `SELECT 
          bi.id,
          bi.status,
          bi.progress,
          (bi.eta < CURDATE() AND bi.status != 'completado') AS is_vencida,
-         COALESCE(bit.value, '') AS legacy_value,
          (
             SELECT JSON_ARRAYAGG(u.name)
-            FROM sprint_items si
-            INNER JOIN sprint_item_tech_users situ ON situ.sprint_item_id = si.id
+            FROM sprint_item_tech_users situ
             INNER JOIN users u ON u.id = situ.user_id
-            WHERE si.backlog_item_id = bi.id 
+            WHERE situ.backlog_item_id = bi.id 
               AND situ.column_id = c.id 
               AND situ.deleted_at IS NULL
-              AND si.deleted_at IS NULL
          ) AS assigned_users
        FROM project_columns c
        INNER JOIN backlog_items bi ON bi.project_id = c.project_id
-       LEFT JOIN backlog_item_tech bit ON bit.backlog_item_id = bi.id AND bit.column_id = c.id AND bit.deleted_at IS NULL
        INNER JOIN projects p ON p.id = bi.project_id
        WHERE p.tenant_id = ?
          AND c.active = 1 AND c.deleted_at IS NULL
@@ -78,27 +74,19 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
       [ctx.tenantId, pid, pid]
     )
 
-    // Agrupamos los datos en memoria para separar nombres con comas
+    // Agrupamos los datos en memoria
     const statsMap = new Map<string, any>()
 
     for (const row of rawDevItems as any[]) {
       let devs: string[] = []
 
-      // 1. Extraemos los usuarios de la tabla nueva (Si usaste checkboxes)
+      // 1. Extraemos los usuarios de la tabla nueva directamente
       if (row.assigned_users) {
         const parsed = typeof row.assigned_users === 'string' ? JSON.parse(row.assigned_users) : row.assigned_users
         if (Array.isArray(parsed) && parsed.length > 0) devs = parsed
       }
 
-      // 2. Fallback: Si no hay checkboxes, procesamos el texto antiguo y lo dividimos por comas
-      if (devs.length === 0 && row.legacy_value) {
-        const devText = row.legacy_value.trim()
-        if (devText && devText !== '-' && devText.toLowerCase() !== 'n/a' && devText.toLowerCase() !== 'na') {
-          devs = devText.split(',').map((d: string) => d.trim()).filter((d: string) => d)
-        }
-      }
-
-      // 3. Contabilizamos las estadísticas por cada desarrollador individual
+      // 2. Contabilizamos las estadísticas por cada desarrollador
       for (const dev of devs) {
         if (!statsMap.has(dev)) {
           statsMap.set(dev, {
