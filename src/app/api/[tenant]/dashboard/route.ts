@@ -20,10 +20,10 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     // Stats de observaciones por estado + ETA
     const obsRows = await query<RowDataPacket>(
       `SELECT
-         SUM(estado = 'abierta')                                                        AS abierta,
-         SUM(estado = 'en_seguimiento')                                                 AS en_seguimiento,
-         SUM(estado = 'resuelta')                                                       AS resuelta,
-         SUM(estado = 'cerrada')                                                        AS cerrada,
+         SUM(estado = 'abierta')                                                AS abierta,
+         SUM(estado = 'en_seguimiento')                                         AS en_seguimiento,
+         SUM(estado = 'resuelta')                                               AS resuelta,
+         SUM(estado = 'cerrada')                                                AS cerrada,
          SUM(eta < CURDATE() AND estado NOT IN ('resuelta','cerrada'))                 AS vencidas,
          SUM(eta BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
              AND estado NOT IN ('resuelta','cerrada'))                                  AS por_vencer,
@@ -34,22 +34,24 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
       [ctx.tenantId, pid, pid],
     )
 
-    // Desarrolladores en observaciones vencidas
+    // Desarrolladores en observaciones vencidas (Lógica Relacional Actualizada)
     const obsOverdueDevs = await query<RowDataPacket>(
-      `SELECT oa.developer_name, COUNT(*) AS total
+      `SELECT u.name AS developer_name, COUNT(*) AS total
        FROM observacion_asignaciones oa
        INNER JOIN observaciones o ON o.id = oa.observacion_id
+       INNER JOIN users u ON u.id = oa.user_id
        WHERE oa.tenant_id  = ?
          AND o.eta         < CURDATE()
          AND o.estado      NOT IN ('resuelta','cerrada')
          AND o.deleted_at  IS NULL
+         AND u.deleted_at  IS NULL
          AND (? IS NULL OR o.project_id = ?)
-       GROUP BY oa.developer_name
+       GROUP BY u.name
        ORDER BY total DESC`,
       [ctx.tenantId, pid, pid],
     )
 
-    // 🚀 Estadísticas por desarrollador (100% Relacional, sin legacy)
+    // Estadísticas por desarrollador (100% Relacional, sin legacy)
     const rawDevItems = await query<RowDataPacket>(
       `SELECT 
          bi.id,

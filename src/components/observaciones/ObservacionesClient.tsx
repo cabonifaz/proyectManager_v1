@@ -31,9 +31,10 @@ interface Asignacion {
   col_key: string
   tech_name: string
   developer_name: string
+  user_id?: number // 🚀 Agregado para leer el ID real
 }
 
-type AsignMap = Record<number, string | null>
+type AsignMap = Record<number, number[]> // 🚀 Ahora guarda un arreglo de IDs
 
 type FormData = {
   tipo: Observacion['tipo']
@@ -201,7 +202,7 @@ export function ObservacionesClient({ projects, tenant, role }: {
   };
   const [items, setItems]               = useState<Observacion[]>([])
   const [techCols, setTechCols]         = useState<TechCol[]>([])
-  const [sprintDevs, setSprintDevs]     = useState<string[]>([])
+  const [projectMembers, setProjectMembers] = useState<{user_id: number, name: string}[]>([])
   const [backlogItems, setBacklogItems] = useState<BacklogItem[]>([])
   const [backlogSearch, setBacklogSearch] = useState('')
   const [backlogOpen, setBacklogOpen]   = useState(false)
@@ -292,13 +293,13 @@ const [formError, setFormError]       = useState('')
     } catch { setTechCols([]) }
   }, [tenant])
 
-  const fetchSprintDevs = useCallback(async (pid: number) => {
+  const fetchProjectMembers = useCallback(async (pid: number) => {
     if (!canAssign) return
     try {
-      const res  = await fetch(`/api/${tenant}/projects/${pid}/sprint-developers`)
+      const res  = await fetch(`/api/${tenant}/projects/${pid}/members`)
       const json = await res.json()
-      setSprintDevs(json.data ?? [])
-    } catch { setSprintDevs([]) }
+      setProjectMembers(json.data ?? [])
+    } catch { setProjectMembers([]) }
   }, [tenant, canAssign])
 
   const fetchBacklogItems = useCallback(async (pid: number) => {
@@ -343,14 +344,13 @@ const fetchItems = useCallback(async () => {
     fetchItems() 
   }, [fetchItems])
 
-  // 🚀 ESTE ES EL GATILLO PARA EL BACKLOG Y RESPONSABLES QUE SE HABÍA BORRADO
-  useEffect(() => {
+useEffect(() => {
     if (projectId) {
       fetchTechCols(projectId)
-      fetchSprintDevs(projectId)
+      fetchProjectMembers(projectId) // 🚀 Nueva función
       fetchBacklogItems(projectId)
     }
-  }, [projectId, fetchTechCols, fetchSprintDevs, fetchBacklogItems])
+  }, [projectId, fetchTechCols, fetchProjectMembers, fetchBacklogItems])
 
   async function fetchAsignaciones(obsId: number): Promise<Asignacion[]> {
     try {
@@ -380,7 +380,10 @@ async function openEdit(item: Observacion) {
     setFormError(''); setBacklogSearch(''); setBacklogOpen(false)
     const asigns = await fetchAsignaciones(item.id)
     const map: AsignMap = {}
-    asigns.forEach(a => { map[a.column_id] = a.developer_name })
+    asigns.forEach(a => {
+      if (!map[a.column_id]) map[a.column_id] = []
+      if (a.user_id) map[a.column_id].push(a.user_id)
+    })
     setAsignMap(map)
     setShowForm(true)
   }
@@ -396,7 +399,7 @@ async function openEdit(item: Observacion) {
     
     // 🚀 VALIDACIÓN: Regla estricta para el estado "Asignado"
     if (form.estado === 'asignado') {
-      const tieneAsignacion = techCols.some(tc => asignMap[tc.id] != null && asignMap[tc.id] !== '');
+      const tieneAsignacion = techCols.some(tc => asignMap[tc.id] && asignMap[tc.id].length > 0);
       if (!tieneAsignacion) {
         setFormError('Para usar el estado "Asignado", debes seleccionar al menos un responsable en tecnología.');
         return;
@@ -426,8 +429,13 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
       const obsId = editItem ? editItem.id : json.id
       if (canAssign && techCols.length > 0) {
         const asignaciones = techCols
-          .filter(tc => asignMap[tc.id] != null && asignMap[tc.id] !== '')
-          .map(tc => ({ techColId: tc.id, colKey: tc.col_key, techName: tc.name, developerName: asignMap[tc.id]! }))
+          .filter(tc => asignMap[tc.id] && asignMap[tc.id].length > 0)
+          .map(tc => ({
+            techColId: tc.id,
+            colKey: tc.col_key,
+            techName: tc.name,
+            userIds: asignMap[tc.id] // 🚀 Arreglo de IDs en lugar de un solo nombre
+          }))
         await fetch(`/api/${tenant}/observaciones/${obsId}/asignaciones`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ asignaciones }),
@@ -886,30 +894,42 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
               </div>
 
               {canAssign && techCols.length > 0 && (
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between">
-                    <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                      Responsables por tecnología
-                    </h3>
-                    {sprintDevs.length === 0 && (
-                      <span className="text-xs text-amber-600">Sin desarrolladores en sprints del proyecto</span>
-                    )}
-                  </div>
-                  <div className="divide-y">
+                <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+                  <h3 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span> Responsables por tecnología
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
                     {techCols.map(tc => (
-                      <div key={tc.id} className="flex items-center gap-3 px-4 py-2.5">
-                        <span className="text-sm text-gray-700 w-32 shrink-0 font-medium">{tc.name}</span>
-                        <select
-                          value={asignMap[tc.id] ?? ''}
-                          onChange={e => setAsignMap(m => ({ ...m, [tc.id]: e.target.value || null }))}
-                          className="flex-1 border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          disabled={sprintDevs.length === 0}
-                        >
-                          <option value="">— Sin asignar —</option>
-                          {sprintDevs.map(name => (
-                            <option key={name} value={name}>{name}</option>
-                          ))}
-                        </select>
+                      <div key={tc.id} className="bg-white p-3 border rounded shadow-sm">
+                        <label className="block text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-2">{tc.name}</label>
+                        <div className="max-h-24 overflow-y-auto space-y-1.5 pr-2">
+                          {projectMembers.length === 0 ? (
+                            <p className="text-[10px] text-gray-400 italic">Sin miembros asignados al proyecto</p>
+                          ) : projectMembers.map(m => {
+                            const isChecked = asignMap[tc.id]?.includes(m.user_id) || false
+                            return (
+                              <label key={m.user_id} className="flex items-center gap-2 cursor-pointer text-xs text-gray-700 hover:text-blue-600 transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    setAsignMap(prev => {
+                                      const current = prev[tc.id] || []
+                                      return {
+                                        ...prev,
+                                        [tc.id]: e.target.checked
+                                          ? [...current, m.user_id]
+                                          : current.filter(id => id !== m.user_id)
+                                      }
+                                    })
+                                  }}
+                                  className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                                {m.name}
+                              </label>
+                            )
+                          })}
+                        </div>
                       </div>
                     ))}
                   </div>
