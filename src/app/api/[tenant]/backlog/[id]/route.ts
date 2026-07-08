@@ -111,18 +111,24 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       )
 
       if (exist && exist.length > 0) {
-        // Ejecutamos el UPDATE
+        // 🚀 CORRECCIÓN VITAL: Reemplazamos COALESCE por IF para forzar a la BD a aceptar NULL y 0 explícitamente.
         await query(
           `UPDATE sprint_items 
-           SET priority = COALESCE(?, priority),
-               status = COALESCE(?, status),
-               review_date = COALESCE(?, review_date), 
+           SET priority = IF(? = 1, ?, priority),
+               status = IF(? = 1, ?, status),
+               review_date = IF(? = 1, ?, review_date), 
                updated_by = ?, 
                updated_at = NOW() 
            WHERE backlog_item_id = ? AND deleted_at IS NULL`,
-          [body.priority ?? 0, body.status ?? null, body.reviewDate || null, ctx.userId, id]
+          [
+            body.priority !== undefined ? 1 : 0, body.priority ?? 0,
+            body.status !== undefined ? 1 : 0, body.status ?? null,
+            body.reviewDate !== undefined ? 1 : 0, body.reviewDate || null, 
+            ctx.userId, 
+            id
+          ]
         )
-      } else if (body.sprintNum !== null && body.sprintNum !== undefined) { 
+      } else if (body.sprintNum !== null && body.sprintNum !== undefined) {
         // Lo insertamos copiando los datos base
         const backlogInfo: any = await query(
           `SELECT project_id, code, description, status FROM backlog_items WHERE id = ? LIMIT 1`, 

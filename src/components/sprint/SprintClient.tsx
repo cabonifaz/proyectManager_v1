@@ -547,12 +547,14 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                         )
                       })}
                       <td className="px-3 py-2 text-xs text-center font-bold text-gray-700 border-x border-gray-100 whitespace-nowrap">
-                        {item.status === 'completado' || (item.priority ?? 0) === 0 ? (
-                          <span className="text-gray-300 font-normal">—</span>
-                        ) : (
-                          <span className={item.priority! >= 8 ? 'text-red-600' : 'text-blue-600'}>P: {item.priority}</span>
-                        )}
-                      </td>
+  {item.status === 'completado' || Number(item.priority || 0) === 0 ? (
+    <span className="text-gray-300 font-normal">—</span>
+  ) : (
+    <span className={Number(item.priority) >= 8 ? 'text-red-600' : 'text-blue-600'}>
+      P: {Number(item.priority)}
+    </span>
+  )}
+</td>
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
                         {item.review_date ? item.review_date.toString().slice(0, 10) : '—'}
                       </td>
@@ -880,8 +882,8 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
         techCols.map(async col => {
           const selectedUserIds = techVals[col.col_key] || []
           
-          // Apuntamos a la ruta respetando [id] del sprint y [itemId]
-          const r = await fetch(`/api/${tenant}/sprints/${item.sprint_num || 0}/items/${item.id}/assign`, {
+          // 🚀 CORRECCIÓN: Ahora el Sprint guarda directamente en la ruta universal del Backlog
+          const r = await fetch(`/api/${tenant}/backlog/${item.id}/tech`, {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ columnId: col.id, userIds: selectedUserIds }),

@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
         p_module:      body.module      ?? null,
         p_description: body.description,
         p_status:      body.status      ?? null,
+        p_progress:    body.progress    ?? 0,     // 🚀 AÑADIDO: Ahora se envía el porcentaje a la BD
         p_sprint_num:  body.sprintNum   ?? null,
         p_eta:         body.eta         ?? null,
         p_comment:     body.comment     ?? null,

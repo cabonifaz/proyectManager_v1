@@ -5,11 +5,17 @@ import { callProcedureOut, query } from '@/lib/db'
 // GET: Obtener los IDs de los usuarios asignados a un proyecto
 export async function GET(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { errorResponse } = await guardRoute(req, 'project:read')
+    const { ctx, errorResponse } = await guardRoute(req, 'project:read')
     if (errorResponse) return errorResponse
 
     const rows: any = await query(
-      'SELECT user_id, role FROM project_members WHERE project_id = ? AND deleted_at IS NULL',
+      `SELECT pm.user_id, pm.role, u.name
+       FROM project_members pm
+       INNER JOIN users u ON u.id = pm.user_id
+       WHERE pm.project_id = ?
+         AND pm.deleted_at IS NULL
+         AND u.deleted_at  IS NULL
+       ORDER BY u.name`,
       [Number(params.id)]
     )
     return NextResponse.json({ data: rows })

@@ -431,14 +431,23 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
             
             if (!val || String(val).trim() === '') continue;
             
-            try {
-              await query(
-                `INSERT INTO observacion_asignaciones 
-                 (tenant_id, observacion_id, column_id, col_key, tech_name, developer_name, created_at) 
-                 VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-                [ctx.tenantId, currentObsId, col.id, col.col_key, col.name, String(val).trim()]
-              )
-            } catch (assignErr: any) {}
+            // 🚀 CORRECCIÓN: Lógica relacional. Traducimos nombres a IDs
+            const savedNames = String(val).split(',').map(n => n.trim().toLowerCase());
+            const matchedIds = projectMembers
+              .filter(m => savedNames.includes(m.name))
+              .map(m => m.id);
+
+            // 🚀 CORRECCIÓN: Insertamos una fila por cada ID encontrado
+            for (const uid of matchedIds) {
+              try {
+                await query(
+                  `INSERT INTO observacion_asignaciones 
+                   (tenant_id, observacion_id, column_id, col_key, user_id, tech_name, developer_name, created_at) 
+                   VALUES (?, ?, ?, ?, ?, ?, '', NOW())`,
+                  [ctx.tenantId, currentObsId, col.id, col.col_key, uid, col.name]
+                )
+              } catch (assignErr: any) {}
+            }
           }
         }
 
