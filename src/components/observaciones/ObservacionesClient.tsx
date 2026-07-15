@@ -10,7 +10,7 @@ interface Observacion {
   id: number
   project_id: number
   backlog_item_id: number | null
-  tipo: 'riesgo' | 'bloqueo' | 'mejora' | 'nota'
+  tipo: 'riesgo' | 'bloqueo' | 'mejora' | 'nota' | 'deuda_tecnica' // 🚀 Actualizado
   prioridad: number
   titulo: string
   descripcion: string | null
@@ -37,8 +37,8 @@ interface Asignacion {
 type AsignMap = Record<number, number[]> // 🚀 Ahora guarda un arreglo de IDs
 
 type FormData = {
-  tipo: Observacion['tipo']
-  prioridad: number | string // 🚀 Acepta string para poder estar vacío
+  tipo: Observacion['tipo'] // Esto heredará automáticamente el cambio anterior
+  prioridad: number | string
   titulo: string
   descripcion: string
   estado: Observacion['estado']
@@ -150,10 +150,11 @@ function compareObs(a: Observacion, b: Observacion, key: SortKey, dir: SortDir):
 
 // ── Constantes de estilos ─────────────────────────────────────────────────────
 const TIPO_STYLES: Record<Observacion['tipo'], string> = {
-  riesgo:  'bg-red-100 text-red-700',
-  bloqueo: 'bg-orange-100 text-orange-700',
-  mejora:  'bg-blue-100 text-blue-700',
-  nota:    'bg-gray-100 text-gray-700',
+  riesgo:        'bg-red-100 text-red-700',
+  bloqueo:       'bg-orange-100 text-orange-700',
+  mejora:        'bg-blue-100 text-blue-700',
+  nota:          'bg-gray-100 text-gray-700',
+  deuda_tecnica: 'bg-fuchsia-100 text-fuchsia-700', // 🚀 Nuevo color fucsia
 }
 
 const ESTADO_STYLES: Record<Observacion['estado'], string> = {
@@ -164,7 +165,13 @@ const ESTADO_STYLES: Record<Observacion['estado'], string> = {
   cerrada:        'bg-gray-200 text-gray-500',
 }
 
-const TIPO_LABELS: Record<Observacion['tipo'], string>     = { riesgo:'Riesgo', bloqueo:'Bloqueo', mejora:'Mejora', nota:'Nota' }
+const TIPO_LABELS: Record<Observacion['tipo'], string> = { 
+  riesgo: 'Riesgo', 
+  bloqueo: 'Bloqueo', 
+  mejora: 'Mejora', 
+  nota: 'Nota',
+  deuda_tecnica: 'Deuda Técnica' // 🚀 Nueva etiqueta amigable
+}
 const ESTADO_LABELS: Record<Observacion['estado'], string> = { abierta:'Abierta', asignado: 'Asignado', en_seguimiento:'En seguimiento', resuelta:'Resuelta', cerrada:'Cerrada' }
 
 const EMPTY_FORM: FormData = {
@@ -215,11 +222,12 @@ const [search, setSearch]             = useState('')
   const [tipoFilters, setTipoFilters]     = useState<string[]>([])
 
   // Opciones de configuración visual para las píldoras de filtrado
-  const TIPO_OPTIONS = [
-    { val: 'riesgo',  label: 'Riesgo',  color: 'bg-red-100 text-red-700' },
-    { val: 'bloqueo', label: 'Bloqueo', color: 'bg-orange-100 text-orange-700' },
-    { val: 'mejora',  label: 'Mejora',  color: 'bg-blue-100 text-blue-700' },
-    { val: 'nota',    label: 'Nota',    color: 'bg-gray-100 text-gray-700' },
+ const TIPO_OPTIONS = [
+    { val: 'riesgo',        label: 'Riesgo',        color: 'bg-red-100 text-red-700' },
+    { val: 'bloqueo',       label: 'Bloqueo',       color: 'bg-orange-100 text-orange-700' },
+    { val: 'mejora',        label: 'Mejora',        color: 'bg-blue-100 text-blue-700' },
+    { val: 'nota',          label: 'Nota',          color: 'bg-gray-100 text-gray-700' },
+    { val: 'deuda_tecnica', label: 'Deuda Técnica', color: 'bg-fuchsia-100 text-fuchsia-700' }, // 🚀 Nuevo botón de filtro
   ]
 
   const ESTADO_OPTIONS_LIST = [
@@ -769,6 +777,7 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
                     <option value="riesgo">Riesgo</option>
                     <option value="bloqueo">Bloqueo</option>
                     <option value="mejora">Mejora</option>
+                    <option value="deuda_tecnica">Deuda Técnica</option> {/* 🚀 Nueva opción */}
                   </select>
                 </div>
 <div>

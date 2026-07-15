@@ -360,6 +360,7 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       if (rawType.includes('riesgo')) parsedType = 'riesgo';
       else if (rawType.includes('bloqueo')) parsedType = 'bloqueo';
       else if (rawType.includes('mejora')) parsedType = 'mejora';
+      else if (rawType.includes('deuda') || rawType.includes('tecnica') || rawType.includes('técnica')) parsedType = 'deuda_tecnica'; // 🚀 Mapeo inteligente
 
       const obsTypeUpdate = row.tipo ? parsedType : null;
       const obsTypeInsert = parsedType; 
