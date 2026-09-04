@@ -16,6 +16,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
     const priorityNum = Number(body.priority) || 0;
     const isCompleted = body.status === 'completado';
 
+    // Un ticket completado siempre tiene 100% de avance
+    if (isCompleted) body.progress = 100;
+
     const currentTicketInfo: any = await query(
         `SELECT sprint_num, priority, project_id, status FROM backlog_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
         [id]

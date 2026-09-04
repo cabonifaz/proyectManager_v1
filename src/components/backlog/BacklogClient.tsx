@@ -97,6 +97,19 @@ const [sprintFilter, setSprint]         = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [itemToDelete, setItemToDelete]           = useState<number | null>(null)
 
+  // Modo compacto: oculta la barra de filtros para maximizar el ancho de la tabla
+  const [compactFilters, setCompactFilters] = useState(false)
+  useEffect(() => {
+    if (localStorage.getItem('pm_backlog_compact') === '1') setCompactFilters(true)
+  }, [])
+  function toggleCompactFilters() {
+    setCompactFilters(prev => {
+      const next = !prev
+      localStorage.setItem('pm_backlog_compact', next ? '1' : '0')
+      return next
+    })
+  }
+
   const canCreate     = ['super_admin','gestor_proyecto'].includes(role)
   const canEdit       = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
   const canDelete     = ['super_admin','gestor_proyecto'].includes(role)
@@ -253,51 +266,59 @@ const [sprintFilter, setSprint]         = useState('')
     <div className="space-y-4">
       {/* Filtros */}
       <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
-        <select
-          className="border rounded px-3 py-1.5 text-sm"
-          value={projectId ?? ''}
-          onChange={e => handleProjectChange(Number(e.target.value))} 
-        >
-          {allowedProjects.length === 0 && <option value="">Sin proyectos permitidos</option>}
-          {allowedProjects.map(p => (
-            <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
-          ))}
-        </select>
+        {!compactFilters && (
+          <select
+            className="border rounded px-3 py-1.5 text-sm"
+            value={projectId ?? ''}
+            onChange={e => handleProjectChange(Number(e.target.value))}
+          >
+            {allowedProjects.length === 0 && <option value="">Sin proyectos permitidos</option>}
+            {allowedProjects.map(p => (
+              <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+            ))}
+          </select>
+        )}
 
-        <input
-          type="text"
-          placeholder="Buscar código, módulo, descripción..."
-          className="border rounded px-3 py-1.5 text-sm w-56 outline-none focus:ring-1 focus:ring-blue-500"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+        {!compactFilters && (
+          <input
+            type="text"
+            placeholder="Buscar código, módulo, descripción..."
+            className="border rounded px-3 py-1.5 text-sm w-56 outline-none focus:ring-1 focus:ring-blue-500"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        )}
 
-        <select
-          className="border rounded px-3 py-1.5 text-sm outline-none"
-          value={statusFilter}
-          onChange={e => setStatus(e.target.value)}
-        >
-          <option value="">Todos los estados</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="en_progreso">En progreso</option>
-          <option value="en_revision">En revisión</option>
-          <option value="completado">Completado</option>
-          <option value="bloqueado">Bloqueado</option>
-        </select>
+        {!compactFilters && (
+          <select
+            className="border rounded px-3 py-1.5 text-sm outline-none"
+            value={statusFilter}
+            onChange={e => setStatus(e.target.value)}
+          >
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendiente</option>
+            <option value="en_progreso">En progreso</option>
+            <option value="en_revision">En revisión</option>
+            <option value="completado">Completado</option>
+            <option value="bloqueado">Bloqueado</option>
+          </select>
+        )}
 
-        <select
-          className="border rounded px-3 py-1.5 text-sm outline-none"
-          value={sprintFilter}
-          onChange={e => setSprint(e.target.value)}
-        >
-          <option value="">Todos los sprints</option>
-          {sprints.map(s => <option key={s} value={s}>Sprint {s}</option>)}
-        </select>
+        {!compactFilters && (
+          <select
+            className="border rounded px-3 py-1.5 text-sm outline-none"
+            value={sprintFilter}
+            onChange={e => setSprint(e.target.value)}
+          >
+            <option value="">Todos los sprints</option>
+            {sprints.map(s => <option key={s} value={s}>Sprint {s}</option>)}
+          </select>
+        )}
 
         <span className="text-xs text-gray-400">{items.length} item(s)</span>
 
         <div className="ml-auto flex gap-2">
-          {canManageCols && (
+          {!compactFilters && canManageCols && (
             <button
               onClick={() => setShowColConfig(true)}
               className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors"
@@ -305,29 +326,40 @@ const [sprintFilter, setSprint]         = useState('')
               ⚙ Columnas
             </button>
           )}
-          <button
-            onClick={handleExport}
-            disabled={exporting || !projectId}
-            className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
-          >
-            {exporting ? 'Exportando...' : '↓ Exportar Excel'}
-          </button>
-          {canCreate && (
-            <>
-              <button
-                onClick={() => setShowImport(true)}
-                className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                ↑ Importar Excel
-              </button>
-              <button
-                onClick={() => { setEditItem(null); setShowForm(true) }}
-                className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
-              >
-                + Nuevo item
-              </button>
-            </>
+          {!compactFilters && (
+            <button
+              onClick={handleExport}
+              disabled={exporting || !projectId}
+              className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              {exporting ? 'Exportando...' : '↓ Exportar Excel'}
+            </button>
           )}
+          {!compactFilters && canCreate && (
+            <button
+              onClick={() => setShowImport(true)}
+              className="border px-3 py-1.5 rounded text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              ↑ Importar Excel
+            </button>
+          )}
+          {canCreate && (
+            <button
+              onClick={() => { setEditItem(null); setShowForm(true) }}
+              className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-medium hover:bg-blue-700 transition-colors"
+            >
+              + Nuevo item
+            </button>
+          )}
+          <button
+            onClick={toggleCompactFilters}
+            title={compactFilters ? 'Mostrar filtros' : 'Ocultar filtros para maximizar la tabla'}
+            className="border px-2 py-1.5 rounded text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points={compactFilters ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -364,7 +396,7 @@ const [sprintFilter, setSprint]         = useState('')
       )}
 
       {/* Tabla */}
-      <div className="overflow-x-auto bg-white rounded-lg shadow">
+      <div className="overflow-x-scroll bg-white rounded-lg shadow">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
@@ -484,7 +516,11 @@ const [sprintFilter, setSprint]         = useState('')
           item={editItem}
           techCols={techCols}
           onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); fetchItems() }}
+          onSaved={(created) => {
+            setShowForm(false)
+            fetchItems()
+            if (created) setChecklistOpen({ id: created.id, code: created.code } as BacklogItem)
+          }}
         />
       )}
 
@@ -584,7 +620,8 @@ const [sprintFilter, setSprint]         = useState('')
 }
 
 function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
-  tenant: string; projectId: number; item: BacklogItem | null; techCols: TechCol[]; onClose: () => void; onSaved: () => void
+  tenant: string; projectId: number; item: BacklogItem | null; techCols: TechCol[]; onClose: () => void
+  onSaved: (created?: { id: number; code: string }) => void
 }) {
   const [form, setForm] = useState({
     code:        item?.code        ?? '',
@@ -777,7 +814,7 @@ const itemId = item?.id ?? json.id
         setSaving(false); return
       }
 
-      onSaved()
+      onSaved(item ? undefined : { id: itemId, code: form.code })
     } catch (e) {
       setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
       setSaving(false)
@@ -820,7 +857,10 @@ const itemId = item?.id ?? json.id
             <div>
               <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">Estado</label>
               <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 bg-white"
-                value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                value={form.status} onChange={e => {
+                  const s = e.target.value
+                  setForm(f => ({ ...f, status: s, progress: s === 'completado' ? 100 : f.progress }))
+                }}>
                 <option value="pendiente">Pendiente</option>
                 <option value="en_progreso">En progreso</option>
                 <option value="en_revision">En revisión</option>

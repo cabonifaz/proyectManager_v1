@@ -144,6 +144,19 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   // 🚀 ESTADO MODAL DRAG AND DROP
   const [isReorderOpen, setIsReorderOpen] = useState(false)
 
+  // Modo compacto: oculta el resumen del sprint y los filtros para maximizar la tabla
+  const [compactFilters, setCompactFilters] = useState(false)
+  useEffect(() => {
+    if (localStorage.getItem('pm_sprint_compact') === '1') setCompactFilters(true)
+  }, [])
+  function toggleCompactFilters() {
+    setCompactFilters(prev => {
+      const next = !prev
+      localStorage.setItem('pm_sprint_compact', next ? '1' : '0')
+      return next
+    })
+  }
+
   const currentProject = allowedProjects.find(p => p.id === projectId)
   const canManageSprint = role !== 'desarrollador' && (role === 'super_admin' || Number(currentProject?.is_member) > 0)
   const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
@@ -309,10 +322,19 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
               ⚙ Gestionar sprints
             </button>
           )}
+          <button
+            onClick={toggleCompactFilters}
+            title={compactFilters ? 'Mostrar resumen y filtros' : 'Ocultar resumen y filtros para maximizar la tabla'}
+            className="border px-2 py-1.5 rounded text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points={compactFilters ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {activeSprint ? (
+      {activeSprint ? (compactFilters ? null : (
         <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
           <div className="flex flex-wrap gap-4 items-start">
             <div className="flex-1">
@@ -396,7 +418,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           </div>
         </div>
-      ) : (
+      )) : (
         <div className="bg-white rounded-lg shadow p-8 text-center">
           <p className="text-gray-400 mb-3">No hay sprint activo para este proyecto</p>
           {canManageSprint && (
@@ -409,32 +431,34 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
       {activeSprint && (
         <>
-          <div className="bg-white rounded-lg shadow px-4 py-3 space-y-2">
-            <div className="flex flex-wrap gap-2 items-center">
-              <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Filtros:</span>
-              {STATUS_OPTIONS.map(s => (
-                <button
-                  key={s.val}
-                  onClick={() => toggleStatus(s.val)}
-                  className={`px-2 py-1 rounded-full text-xs font-medium border transition-all ${
-                    statusFilters.includes(s.val) ? `${s.color} border-current shadow-sm` : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  {s.label}
-                </button>
-              ))}
-              {statusFilters.length > 0 && (
-                <button onClick={() => setStatusFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline">Limpiar</button>
-              )}
-              {sort.key && (
-                <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded ml-2">
-                  Ordenado {sort.dir === 'asc' ? '▲' : '▼'}
-                  <button onClick={() => setSort({ key: null, dir: 'asc' })} className="ml-1 text-blue-400 hover:text-blue-700 font-bold text-sm leading-none">&times;</button>
-                </span>
-              )}
-              <span className="text-xs text-gray-400 ml-auto">{items.length} item(s)</span>
+          {!compactFilters && (
+            <div className="bg-white rounded-lg shadow px-4 py-3 space-y-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Filtros:</span>
+                {STATUS_OPTIONS.map(s => (
+                  <button
+                    key={s.val}
+                    onClick={() => toggleStatus(s.val)}
+                    className={`px-2 py-1 rounded-full text-xs font-medium border transition-all ${
+                      statusFilters.includes(s.val) ? `${s.color} border-current shadow-sm` : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+                {statusFilters.length > 0 && (
+                  <button onClick={() => setStatusFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline">Limpiar</button>
+                )}
+                {sort.key && (
+                  <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded ml-2">
+                    Ordenado {sort.dir === 'asc' ? '▲' : '▼'}
+                    <button onClick={() => setSort({ key: null, dir: 'asc' })} className="ml-1 text-blue-400 hover:text-blue-700 font-bold text-sm leading-none">&times;</button>
+                  </span>
+                )}
+                <span className="text-xs text-gray-400 ml-auto">{items.length} item(s)</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {fetchError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm flex justify-between">
@@ -443,7 +467,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           )}
 
-          <div className="overflow-x-auto bg-white rounded-lg shadow">
+          <div className="overflow-x-scroll bg-white rounded-lg shadow">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
@@ -925,7 +949,10 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 tracking-widest mb-1">Estado</label>
-              <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+              <select className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" value={form.status} onChange={e => {
+                const s = e.target.value
+                setForm(f => ({ ...f, status: s, progress: s === 'completado' ? 100 : f.progress }))
+              }}>
                 <option value="pendiente">Pendiente</option>
                 <option value="en_progreso">En progreso</option>
                 <option value="en_revision">En revisión</option>

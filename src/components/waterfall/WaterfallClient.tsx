@@ -28,6 +28,19 @@ export function WaterfallClient({
   const [data, setData] = useState<{ tasks: any[], timeline: any[] }>({ tasks: [], timeline: [] })
   const [error, setError] = useState('')
 
+  // Modo compacto: oculta la leyenda y los botones para maximizar el diagrama
+  const [compactFilters, setCompactFilters] = useState(false)
+  useEffect(() => {
+    if (localStorage.getItem('pm_waterfall_compact') === '1') setCompactFilters(true)
+  }, [])
+  function toggleCompactFilters() {
+    setCompactFilters(prev => {
+      const next = !prev
+      localStorage.setItem('pm_waterfall_compact', next ? '1' : '0')
+      return next
+    })
+  }
+
   const canManage = ['super_admin', 'gestor_proyecto'].includes(role)
 
   const fetchData = useCallback(async () => {
@@ -71,24 +84,35 @@ export function WaterfallClient({
     <div className="space-y-4">
       {/* Controles y Leyenda */}
       <div className="bg-white rounded-lg shadow p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-2">Leyenda:</span>
-          {dictionary.map(status => (
-            <div key={status.id} className="flex items-center gap-1.5 border px-2 py-1 rounded shadow-sm" style={{ borderColor: `${status.color_hex}40`, backgroundColor: `${status.color_hex}10` }}>
-              <span className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shadow-sm" style={{ backgroundColor: status.color_hex, color: status.text_color }}>
-                {status.status_key}
-              </span>
-              <span className="text-xs font-medium text-gray-700">{status.status_name}</span>
-            </div>
-          ))}
-        </div>
+        {!compactFilters && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-2">Leyenda:</span>
+            {dictionary.map(status => (
+              <div key={status.id} className="flex items-center gap-1.5 border px-2 py-1 rounded shadow-sm" style={{ borderColor: `${status.color_hex}40`, backgroundColor: `${status.color_hex}10` }}>
+                <span className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-black shadow-sm" style={{ backgroundColor: status.color_hex, color: status.text_color }}>
+                  {status.status_key}
+                </span>
+                <span className="text-xs font-medium text-gray-700">{status.status_name}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-        <div className="flex gap-3">
-          {canManage && (
+        <div className="flex gap-3 ml-auto">
+          {!compactFilters && canManage && (
             <button onClick={() => setShowImport(true)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-indigo-700 transition-colors flex items-center gap-2">
               <span>↑</span> Importar Excel
             </button>
           )}
+          <button
+            onClick={toggleCompactFilters}
+            title={compactFilters ? 'Mostrar leyenda y botones' : 'Ocultar leyenda y botones para maximizar el diagrama'}
+            className="border px-2.5 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points={compactFilters ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
+            </svg>
+          </button>
         </div>
       </div>
 
