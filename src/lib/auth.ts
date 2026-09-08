@@ -50,32 +50,46 @@ export const authOptions: NextAuthOptions = {
      async authorize(credentials) {
         console.log("\n🚨 [AUTH START] Credenciales recibidas desde el formulario:", credentials)
 
-        if (!credentials?.email || !credentials?.password || !credentials?.slug) {
+        if (!credentials?.email || !credentials?.password) {
           console.log("❌ [AUTH ERROR] Faltan datos en el objeto credentials")
           throw new Error('Credenciales incompletas')
         }
 
         try {
-          const usuariosEncontrados = await query<UserRow>(
-            `SELECT u.id, u.tenant_id, t.slug AS tenant_slug,
-                    u.name, u.email, u.password_hash, u.role, u.avatar_url, u.active
-             FROM users u
-             INNER JOIN tenants t ON t.id = u.tenant_id
-             WHERE u.email      = ?
-               AND t.slug       = ?
-               AND u.deleted_at IS NULL
-               AND t.deleted_at IS NULL
-               AND t.active     = 1
-             LIMIT 1`,
-            [credentials.email.toLowerCase(), credentials.slug],
-          )
+          // Sin slug: acceso centralizado, solo permitido para super_admin (no está atado a una empresa)
+          const usuariosEncontrados = credentials.slug
+            ? await query<UserRow>(
+                `SELECT u.id, u.tenant_id, t.slug AS tenant_slug,
+                        u.name, u.email, u.password_hash, u.role, u.avatar_url, u.active
+                 FROM users u
+                 INNER JOIN tenants t ON t.id = u.tenant_id
+                 WHERE u.email      = ?
+                   AND t.slug       = ?
+                   AND u.deleted_at IS NULL
+                   AND t.deleted_at IS NULL
+                   AND t.active     = 1
+                 LIMIT 1`,
+                [credentials.email.toLowerCase(), credentials.slug],
+              )
+            : await query<UserRow>(
+                `SELECT u.id, u.tenant_id, t.slug AS tenant_slug,
+                        u.name, u.email, u.password_hash, u.role, u.avatar_url, u.active
+                 FROM users u
+                 INNER JOIN tenants t ON t.id = u.tenant_id
+                 WHERE u.email      = ?
+                   AND u.role       = 'super_admin'
+                   AND u.deleted_at IS NULL
+                   AND t.deleted_at IS NULL
+                 LIMIT 1`,
+                [credentials.email.toLowerCase()],
+              )
 
           console.log("🔍 [AUTH DB RESULT] Filas encontradas en la BD:", usuariosEncontrados.length)
           const user = usuariosEncontrados[0]
 
           if (!user) {
             console.log("❌ [AUTH ERROR] Usuario no encontrado. Motivos posibles: email incorrecto, t.active = NULL/0, o el credentials.slug no hace match exacto.")
-            throw new Error('Usuario o empresa no encontrados')
+            throw new Error(credentials.slug ? 'Usuario o empresa no encontrados' : 'Usuario no encontrado o sin permisos de administrador')
           }
           if (!user.active) {
             console.log("❌ [AUTH ERROR] El usuario está en la BD pero su campo active es 0 o NULL")

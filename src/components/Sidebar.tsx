@@ -104,7 +104,7 @@ export function Sidebar({ tenant, tenantName, logoUrl, role, userName }: {
           </>
         )}
         <button
-          onClick={() => signOut({ callbackUrl: '/login' })}
+          onClick={() => signOut({ callbackUrl: `/login?slug=${encodeURIComponent(tenant)}` })}
           title="Cerrar sesión"
           className={`text-xs text-gray-400 hover:text-white py-1 transition-colors flex items-center gap-2 ${collapsed ? 'justify-center w-full' : 'text-left'}`}
         >

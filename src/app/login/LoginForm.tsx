@@ -22,7 +22,7 @@ export default function LoginForm({ slug, brand }: { slug: string; brand?: Tenan
       slug,
     })
     if (res?.error) {
-      setError('Credenciales incorrectas')
+      setError(res.error === 'CredentialsSignin' ? 'Credenciales incorrectas' : res.error)
       setLoading(false)
     } else {
       router.push('/')
@@ -35,34 +35,32 @@ export default function LoginForm({ slug, brand }: { slug: string; brand?: Tenan
         <img src={brand.logoUrl} alt={brand.name} className="h-12 mx-auto mb-3 object-contain" />
       )}
       <h1 className="text-2xl font-semibold mb-2 text-center">{brand?.name || 'Project Manager'}</h1>
-      <p className="text-xs text-center text-gray-400 mb-6">Acceso al portal corporativo</p>
+      <p className="text-xs text-center text-gray-400 mb-6">
+        {slug ? 'Acceso al portal corporativo' : 'Acceso de administrador'}
+      </p>
 
-      {!slug && (
-        <div className="mb-4 p-3 bg-red-50 text-red-700 rounded text-sm font-medium border border-red-100">
-          Enlace inválido: falta el identificador de la empresa.
-        </div>
-      )}
       {error && (
         <div className="mb-4 p-3 bg-red-50 text-red-700 rounded text-sm font-medium border border-red-100">{error}</div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1 text-gray-700">Empresa</label>
-          <input
-            type="text"
-            readOnly
-            className="w-full border rounded px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed outline-none"
-            value={slug}
-          />
-        </div>
+        {slug && (
+          <div>
+            <label className="block text-sm font-medium mb-1 text-gray-700">Empresa</label>
+            <input
+              type="text"
+              readOnly
+              className="w-full border rounded px-3 py-2 text-sm bg-gray-100 text-gray-500 cursor-not-allowed outline-none"
+              value={slug}
+            />
+          </div>
+        )}
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-700">Email</label>
           <input
             type="email"
             required
-            disabled={!slug}
-            className="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+            className="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
             value={form.email}
             onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
           />
@@ -72,15 +70,14 @@ export default function LoginForm({ slug, brand }: { slug: string; brand?: Tenan
           <input
             type="password"
             required
-            disabled={!slug}
-            className="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+            className="w-full border rounded px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500"
             value={form.password}
             onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
           />
         </div>
         <button
           type="submit"
-          disabled={loading || !slug}
+          disabled={loading}
           className="w-full bg-blue-600 text-white py-2.5 rounded text-sm font-bold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
         >
           {loading ? 'Ingresando...' : 'Ingresar'}
