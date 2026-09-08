@@ -516,11 +516,7 @@ const [sprintFilter, setSprint]         = useState('')
           item={editItem}
           techCols={techCols}
           onClose={() => setShowForm(false)}
-          onSaved={(created) => {
-            setShowForm(false)
-            fetchItems()
-            if (created) setChecklistOpen({ id: created.id, code: created.code } as BacklogItem)
-          }}
+          onSaved={() => { setShowForm(false); fetchItems() }}
         />
       )}
 
@@ -621,7 +617,7 @@ const [sprintFilter, setSprint]         = useState('')
 
 function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
   tenant: string; projectId: number; item: BacklogItem | null; techCols: TechCol[]; onClose: () => void
-  onSaved: (created?: { id: number; code: string }) => void
+  onSaved: () => void
 }) {
   const [form, setForm] = useState({
     code:        item?.code        ?? '',
@@ -633,6 +629,24 @@ function BacklogForm({ tenant, projectId, item, techCols, onClose, onSaved }: {
     eta:         item?.eta ? item.eta.toString().slice(0, 10) : '',
     comment:     item?.comment     ?? '',
   })
+
+  // Tareas/checklist a crear junto con el item nuevo (solo aplica al crear)
+  const [newTasks, setNewTasks] = useState<{ descripcion: string; peso: number }[]>([])
+  const [taskDesc, setTaskDesc] = useState('')
+  const [taskPeso, setTaskPeso] = useState<number | ''>('')
+
+  function addNewTask() {
+    if (!taskDesc.trim()) return
+    setNewTasks(prev => [...prev, { descripcion: taskDesc.trim(), peso: Number(taskPeso) || 0 }])
+    setTaskDesc('')
+    setTaskPeso('')
+  }
+
+  function removeNewTask(idx: number) {
+    setNewTasks(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const newTasksTotalPeso = newTasks.reduce((sum, t) => sum + t.peso, 0)
 
 // 🚀 1. Estado para almacenar arreglos de IDs (checkboxes) - FILTRANDO NULLS
   const [techVals, setTechVals] = useState<Record<string, number[]>>(() => {
@@ -814,7 +828,29 @@ const itemId = item?.id ?? json.id
         setSaving(false); return
       }
 
-      onSaved(item ? undefined : { id: itemId, code: form.code })
+      // Al crear el item, guardamos también el checklist de tareas armado en el formulario
+      if (!item && newTasks.length > 0) {
+        const taskErrors: string[] = []
+        await Promise.all(
+          newTasks.map(async t => {
+            const r = await fetch(`/api/${tenant}/backlog/${itemId}/tasks`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ descripcion: t.descripcion, peso: t.peso }),
+            })
+            if (!r.ok) {
+              const rj = await r.json()
+              taskErrors.push(rj.error ?? t.descripcion)
+            }
+          })
+        )
+        if (taskErrors.length > 0) {
+          setError(`Item guardado pero con errores en tareas: ${taskErrors.join(', ')}`)
+          setSaving(false); return
+        }
+      }
+
+      onSaved()
     } catch (e) {
       setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
       setSaving(false)
@@ -933,6 +969,57 @@ const itemId = item?.id ?? json.id
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {!item && (
+            <div className="bg-gray-50 p-4 rounded-lg border border-gray-100">
+              <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                Tareas / Checklist (opcional)
+              </p>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  placeholder="Descripción de la tarea..."
+                  className="flex-1 border rounded px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  value={taskDesc}
+                  onChange={e => setTaskDesc(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addNewTask() } }}
+                />
+                <input
+                  type="number" min={0} max={100}
+                  placeholder="Peso %"
+                  className="w-20 border rounded px-2 py-2 text-sm outline-none focus:border-blue-500"
+                  value={taskPeso}
+                  onChange={e => setTaskPeso(e.target.value === '' ? '' : Number(e.target.value))}
+                  title="Peso opcional (0-100)"
+                />
+                <button
+                  type="button"
+                  onClick={addNewTask}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-indigo-700"
+                >
+                  + Añadir
+                </button>
+              </div>
+
+              {newTasks.length > 0 && (
+                <div className="space-y-1.5">
+                  {newTasks.map((t, idx) => (
+                    <div key={idx} className="flex items-center justify-between bg-white border rounded px-3 py-1.5">
+                      <span className="text-sm text-gray-700">{t.descripcion}</span>
+                      <div className="flex items-center gap-3">
+                        {t.peso > 0 && <span className="text-xs text-gray-400 font-mono">{t.peso}%</span>}
+                        <button type="button" onClick={() => removeNewTask(idx)} className="text-gray-400 hover:text-red-600 text-sm leading-none">&times;</button>
+                      </div>
+                    </div>
+                  ))}
+                  {newTasksTotalPeso > 100 && (
+                    <p className="text-xs text-red-600 font-bold mt-1">⚠️ La suma de pesos ({newTasksTotalPeso}%) supera el 100%.</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

@@ -33,6 +33,7 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
   const [fetchError, setFetchError] = useState('')
   const [search, setSearch]         = useState('')
   const [roleFilter, setRoleFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'activo' | 'inactivo' | 'todos'>('activo')
   const [showForm, setShowForm]     = useState(false)
   const [editUser, setEditUser]     = useState<AppUser | null>(null)
   const [showProjects, setShowProjects] = useState<AppUser | null>(null)
@@ -69,8 +70,12 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
       )
     }
     if (roleFilter) result = result.filter(u => u.role === roleFilter)
+    if (statusFilter === 'activo') result = result.filter(u => u.active)
+    else if (statusFilter === 'inactivo') result = result.filter(u => !u.active)
+    // Los usuarios desactivados siempre se muestran al final
+    result.sort((a, b) => Number(b.active) - Number(a.active))
     setFiltered(result)
-  }, [users, search, roleFilter])
+  }, [users, search, roleFilter, statusFilter])
 
   async function handleToggle(user: AppUser) {
     if (!isSuperAdmin) return
@@ -113,6 +118,27 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
           <option value="lider_tecnico">Líder técnico</option>
           <option value="desarrollador">Desarrollador</option>
         </select>
+
+        <div className="flex gap-1.5 items-center">
+          {([
+            { val: 'activo',   label: 'Activos' },
+            { val: 'inactivo', label: 'Inactivos' },
+            { val: 'todos',    label: 'Todos' },
+          ] as const).map(s => (
+            <button
+              key={s.val}
+              onClick={() => setStatusFilter(s.val)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                statusFilter === s.val
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
         <span className="text-xs text-gray-400">{filtered.length} usuario(s)</span>
         {canCreate && (
           <button
