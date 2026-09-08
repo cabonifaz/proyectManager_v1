@@ -5,7 +5,9 @@ import { promises as fs } from 'fs'
 import path from 'path'
 
 const RESERVED_SLUGS = ['admin', 'api', 'login', '_next', 'favicon.ico', 'public']
-const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
+// Case-insensitive: tenants ya existentes en producción tienen el slug con mayúsculas
+// (ej. "Fractal"), y forzar minúsculas al editar les cambiaría la URL y rompería su acceso.
+const SLUG_RE = /^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$/
 const HEX_RE = /^#[0-9a-fA-F]{6}$/
 const MAX_LOGO_BYTES = 2 * 1024 * 1024
 const MIME_EXT: Record<string, string> = {
@@ -77,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     let nextSlug = current[0].slug
     if (body.slug !== undefined) {
-      const slug = String(body.slug).trim().toLowerCase()
+      const slug = String(body.slug).trim()
       const slugError = validateSlug(slug)
       if (slugError) return NextResponse.json({ error: slugError }, { status: 400 })
 

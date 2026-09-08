@@ -4,7 +4,7 @@ import { query, execute } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
 const RESERVED_SLUGS = ['admin', 'api', 'login', '_next', 'favicon.ico', 'public']
-const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
+const SLUG_RE = /^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$/
 
 interface TenantRow extends RowDataPacket {
   id: number
