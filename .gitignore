@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# archivos subidos por usuarios (logos de tenants, etc.)
+/public/uploads

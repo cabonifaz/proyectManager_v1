@@ -33,7 +33,9 @@ function Icon({ name }: { name: string }) {
 
 const COLLAPSE_KEY = 'pm_sidebar_collapsed'
 
-export function Sidebar({ tenant, tenantName, role, userName }: { tenant: string; tenantName: string; role: Role; userName: string }) {
+export function Sidebar({ tenant, tenantName, logoUrl, role, userName }: {
+  tenant: string; tenantName: string; logoUrl?: string | null; role: Role; userName: string
+}) {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
 
@@ -52,10 +54,15 @@ export function Sidebar({ tenant, tenantName, role, userName }: { tenant: string
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-56'} bg-gray-900 text-gray-100 flex flex-col shrink-0 transition-all duration-150`}>
       <div className="px-4 py-5 border-b border-gray-700 flex items-center justify-between gap-2">
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-xs text-gray-400 uppercase tracking-wider">Project Manager</p>
-            <p className="font-semibold truncate mt-1">{tenantName}</p>
+        {collapsed ? (
+          logoUrl && <img src={logoUrl} alt={tenantName} className="w-8 h-8 rounded object-contain mx-auto" />
+        ) : (
+          <div className="min-w-0 flex items-center gap-2">
+            {logoUrl && <img src={logoUrl} alt={tenantName} className="w-8 h-8 rounded object-contain shrink-0" />}
+            <div className="min-w-0">
+              <p className="text-xs text-gray-400 uppercase tracking-wider">Project Manager</p>
+              <p className="font-semibold truncate mt-1">{tenantName}</p>
+            </div>
           </div>
         )}
         <button

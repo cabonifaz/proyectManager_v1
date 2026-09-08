@@ -5,6 +5,36 @@
 :root {
   --background: #f9fafb; /* Un gris super clarito de fondo general queda más moderno que el blanco puro */
   --foreground: #171717;
+
+  /* Color de marca del tenant. Se sobreescribe por tenant vía style inline
+     en [tenant]/layout.tsx y en el login; estos son el valor por defecto (azul actual). */
+  --tenant-accent: #2563eb;
+  --tenant-accent-hover: #1d4ed8;
+}
+
+/* Reasigna al color de marca del tenant solo los usos de "azul" que son
+   botones primarios / estados activos. Deliberadamente NO toca bg-blue-50/100
+   ni text-blue-700, que se usan como color semántico de estado ("en progreso")
+   en Dashboard, Backlog, Sprint y Observaciones. */
+@layer utilities {
+  .bg-blue-600 {
+    background-color: var(--tenant-accent) !important;
+  }
+  .hover\:bg-blue-700:hover {
+    background-color: var(--tenant-accent-hover) !important;
+  }
+  .border-blue-600 {
+    border-color: var(--tenant-accent) !important;
+  }
+  .focus\:ring-blue-500:focus {
+    --tw-ring-color: var(--tenant-accent) !important;
+  }
+  .focus\:border-blue-500:focus {
+    border-color: var(--tenant-accent) !important;
+  }
+  .bg-blue-500 {
+    background-color: var(--tenant-accent) !important;
+  }
 }
 
 /* ELIMINADO: @media (prefers-color-scheme: dark) 

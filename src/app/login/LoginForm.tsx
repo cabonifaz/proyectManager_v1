@@ -3,7 +3,9 @@ import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
-export default function LoginForm({ slug }: { slug: string }) {
+interface TenantBrand { name: string; logoUrl: string | null; colorHex: string | null }
+
+export default function LoginForm({ slug, brand }: { slug: string; brand?: TenantBrand | null }) {
   const router = useRouter()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
@@ -29,7 +31,10 @@ export default function LoginForm({ slug }: { slug: string }) {
 
   return (
     <div className="bg-white p-8 rounded-lg shadow w-full max-w-sm">
-      <h1 className="text-2xl font-semibold mb-2 text-center">Project Manager</h1>
+      {brand?.logoUrl && (
+        <img src={brand.logoUrl} alt={brand.name} className="h-12 mx-auto mb-3 object-contain" />
+      )}
+      <h1 className="text-2xl font-semibold mb-2 text-center">{brand?.name || 'Project Manager'}</h1>
       <p className="text-xs text-center text-gray-400 mb-6">Acceso al portal corporativo</p>
 
       {!slug && (
