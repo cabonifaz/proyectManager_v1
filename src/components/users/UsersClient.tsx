@@ -37,6 +37,8 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
   const [showForm, setShowForm]     = useState(false)
   const [editUser, setEditUser]     = useState<AppUser | null>(null)
   const [showProjects, setShowProjects] = useState<AppUser | null>(null)
+  const [resetResult, setResetResult] = useState<{ name: string; password: string } | null>(null)
+  const [resettingId, setResettingId] = useState<number | null>(null)
 
   const isSuperAdmin = role === 'super_admin'
   const canCreate    = isSuperAdmin
@@ -88,11 +90,27 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
       if (!res.ok) {
         const json = await res.json()
         alert(`Error: ${json.error}`)
-        return 
+        return
       }
       fetchUsers()
     } catch (e) {
       alert(`Error de red`)
+    }
+  }
+
+  async function handleResetPassword(user: AppUser) {
+    if (!isSuperAdmin) return
+    if (!confirm(`¿Resetear la contraseña de ${user.name}? La contraseña actual dejará de funcionar.`)) return
+    setResettingId(user.id)
+    try {
+      const res  = await fetch(`/api/${tenant}/users/${user.id}/reset-password`, { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) { alert(`Error: ${json.error}`); return }
+      setResetResult({ name: user.name, password: json.password })
+    } catch (e) {
+      alert('Error de red')
+    } finally {
+      setResettingId(null)
     }
   }
 
@@ -245,6 +263,15 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
                           Asignar
                         </button>
                       )}
+                      {isSuperAdmin && (
+                        <button
+                          onClick={() => handleResetPassword(u)}
+                          disabled={resettingId === u.id}
+                          className="text-indigo-600 hover:text-indigo-800 text-xs font-medium disabled:opacity-50"
+                        >
+                          {resettingId === u.id ? 'Reseteando...' : 'Resetear contraseña'}
+                        </button>
+                      )}
                       {canToggle && u.id !== currentUserId && (
                         <button
                           onClick={() => handleToggle(u)}
@@ -281,6 +308,46 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
           canManage={isSuperAdmin}
         />
       )}
+
+      {resetResult && (
+        <ResetPasswordResultModal result={resetResult} onClose={() => setResetResult(null)} />
+      )}
+    </div>
+  )
+}
+
+function ResetPasswordResultModal({ result, onClose }: { result: { name: string; password: string }; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-6">
+        <h2 className="text-lg font-bold text-gray-800 mb-2">Contraseña reseteada</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Comparte esta contraseña con <strong>{result.name}</strong> — no se va a volver a mostrar.
+        </p>
+        <div className="flex items-center gap-2 mb-4">
+          <code className="flex-1 text-sm font-mono bg-gray-50 border border-gray-200 rounded px-3 py-2">{result.password}</code>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(result.password)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+              } catch { /* el usuario puede copiarla a mano */ }
+            }}
+            className="shrink-0 text-xs font-bold px-3 py-2 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+          >
+            {copied ? '¡Copiado!' : 'Copiar'}
+          </button>
+        </div>
+        <div className="flex justify-end">
+          <button onClick={onClose} className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow hover:bg-blue-700 transition-colors">
+            Listo
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

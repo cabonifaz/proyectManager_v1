@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, AppUser } from '@/lib/auth'
 import { Role, Permission, hasPermission, ForbiddenError } from '@/lib/rbac'
+import { query } from '@/lib/db'
+import { RowDataPacket } from 'mysql2/promise'
 
 export interface RequestContext {
   tenantId:   number
@@ -11,7 +13,9 @@ export interface RequestContext {
   user:       AppUser
 }
 
-export function getContextFromHeaders(req: NextRequest): RequestContext | null {
+interface TenantIdRow extends RowDataPacket { id: number; slug: string }
+
+export async function getContextFromHeaders(req: NextRequest): Promise<RequestContext | null> {
   const tenantId   = req.headers.get('x-tenant-id')
   const tenantSlug = req.headers.get('x-tenant-slug')
   const userId     = req.headers.get('x-user-id')
@@ -19,12 +23,31 @@ export function getContextFromHeaders(req: NextRequest): RequestContext | null {
 
   if (!tenantId || !tenantSlug || !userId || !role) return null
 
+  let effectiveTenantId   = Number(tenantId)
+  let effectiveTenantSlug = tenantSlug
+
+  // super_admin puede navegar a /<otro-tenant>/... : el tenant de sus propios headers
+  // (su sesion) no es el tenant que esta viendo, hay que resolverlo desde la URL.
+  if (role === 'super_admin') {
+    const urlSlug = req.nextUrl.pathname.match(/^\/api\/([^/]+)\//)?.[1] ?? null
+    if (urlSlug && urlSlug !== tenantSlug) {
+      const rows = await query<TenantIdRow>(
+        `SELECT id, slug FROM tenants WHERE slug = ? AND deleted_at IS NULL AND active = 1 LIMIT 1`,
+        [urlSlug],
+      )
+      if (rows[0]) {
+        effectiveTenantId   = rows[0].id
+        effectiveTenantSlug = rows[0].slug
+      }
+    }
+  }
+
   return {
-    tenantId:   Number(tenantId),
-    tenantSlug,
+    tenantId:   effectiveTenantId,
+    tenantSlug: effectiveTenantSlug,
     userId:     Number(userId),
     role,
-    user: { tenantId: Number(tenantId), tenantSlug, role } as AppUser,
+    user: { tenantId: effectiveTenantId, tenantSlug: effectiveTenantSlug, role } as AppUser,
   }
 }
 
@@ -37,7 +60,7 @@ export async function guardRoute(
   req: NextRequest,
   permission: Permission,
 ): Promise<{ ctx: RequestContext; errorResponse: null } | { ctx: null; errorResponse: NextResponse }> {
-  const ctx = getContextFromHeaders(req)
+  const ctx = await getContextFromHeaders(req)
 
   if (!ctx) {
     return { ctx: null, errorResponse: NextResponse.json({ error: 'No autenticado' }, { status: 401 }) }
@@ -54,7 +77,7 @@ export async function guardRouteAll(
   req: NextRequest,
   permissions: Permission[],
 ): Promise<{ ctx: RequestContext; errorResponse: null } | { ctx: null; errorResponse: NextResponse }> {
-  const ctx = getContextFromHeaders(req)
+  const ctx = await getContextFromHeaders(req)
 
   if (!ctx) {
     return { ctx: null, errorResponse: NextResponse.json({ error: 'No autenticado' }, { status: 401 }) }

@@ -159,11 +159,15 @@ function TenantForm({ tenant, onClose, onSaved }: {
     plan:  tenant?.plan  ?? 'trial',
     active: tenant?.active ?? 1,
     colorHex: tenant?.color_hex ?? '#2563eb',
+    adminName: '',
+    adminEmail: '',
   })
   const [logoPreview, setLogoPreview] = useState<string | null>(tenant?.logo_url ?? null)
   const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [createdPassword, setCreatedPassword] = useState<string | null>(null)
+  const [passwordCopied, setPasswordCopied] = useState(false)
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -193,6 +197,9 @@ function TenantForm({ tenant, onClose, onSaved }: {
       if (tenant) {
         body.active = form.active
         body.colorHex = form.colorHex
+      } else {
+        body.adminName = form.adminName
+        body.adminEmail = form.adminEmail
       }
       if (logoDataUrl) body.logoDataUrl = logoDataUrl
 
@@ -203,11 +210,59 @@ function TenantForm({ tenant, onClose, onSaved }: {
       })
       const json = await res.json()
       if (!res.ok) { setError(json.error ?? 'Error al guardar'); setSaving(false); return }
+
+      if (!tenant && json.adminPassword) {
+        setCreatedPassword(json.adminPassword)
+        setSaving(false)
+        return
+      }
       onSaved()
     } catch (e) {
       setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
       setSaving(false)
     }
+  }
+
+  if (createdPassword) {
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="px-6 py-4 border-b bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-800">Empresa creada</h2>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-gray-600">
+              Comparte esta contraseña con <strong>{form.adminName}</strong> ({form.adminEmail}) — no se va a volver a mostrar.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-sm font-mono bg-gray-50 border border-gray-200 rounded px-3 py-2">{createdPassword}</code>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(createdPassword)
+                    setPasswordCopied(true)
+                    setTimeout(() => setPasswordCopied(false), 2000)
+                  } catch { /* el usuario puede copiarla a mano */ }
+                }}
+                className="shrink-0 text-xs font-bold px-3 py-2 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                {passwordCopied ? '¡Copiado!' : 'Copiar'}
+              </button>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={onSaved}
+                className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg shadow hover:bg-blue-700 transition-colors"
+              >
+                Listo
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -271,6 +326,35 @@ function TenantForm({ tenant, onClose, onSaved }: {
                 <option value="pro">Pro</option>
               </select>
             </div>
+
+            {!tenant && (
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-100 space-y-3">
+                <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600"></span>
+                  Administrador de la empresa
+                </p>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Nombre *</label>
+                  <input
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={form.adminName}
+                    onChange={e => setForm(f => ({ ...f, adminName: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email *</label>
+                  <input
+                    required
+                    type="email"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={form.adminEmail}
+                    onChange={e => setForm(f => ({ ...f, adminEmail: e.target.value }))}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400">Se crea con rol Gestor de Proyecto y una contraseña generada que se mostrará al guardar.</p>
+              </div>
+            )}
 
             {tenant && (
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
-import { query, execute } from '@/lib/db'
+import { query, execute, callProcedureOut } from '@/lib/db'
+import { generatePassword } from '@/lib/password'
+import bcrypt from 'bcryptjs'
 import { RowDataPacket } from 'mysql2/promise'
 
 const RESERVED_SLUGS = ['admin', 'api', 'login', '_next', 'favicon.ico', 'public']
@@ -45,15 +47,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { errorResponse } = await guardRoute(req, 'tenant:create')
+    const { ctx, errorResponse } = await guardRoute(req, 'tenant:create')
     if (errorResponse) return errorResponse
 
     const body = await req.json()
-    const name = String(body.name ?? '').trim()
-    const slug = String(body.slug ?? '').trim().toLowerCase()
-    const plan = String(body.plan ?? 'trial')
+    const name       = String(body.name ?? '').trim()
+    const slug       = String(body.slug ?? '').trim().toLowerCase()
+    const plan       = String(body.plan ?? 'trial')
+    const adminName  = String(body.adminName ?? '').trim()
+    const adminEmail = String(body.adminEmail ?? '').trim().toLowerCase()
 
     if (!name) return NextResponse.json({ error: 'El nombre es obligatorio' }, { status: 400 })
+    if (!adminName)  return NextResponse.json({ error: 'El nombre del administrador es obligatorio' }, { status: 400 })
+    if (!adminEmail) return NextResponse.json({ error: 'El email del administrador es obligatorio' }, { status: 400 })
 
     const slugError = validateSlug(slug)
     if (slugError) return NextResponse.json({ error: slugError }, { status: 400 })
@@ -71,8 +77,32 @@ export async function POST(req: NextRequest) {
       `INSERT INTO tenants (name, slug, plan, active) VALUES (?, ?, ?, 1)`,
       [name, slug, plan],
     )
+    const tenantId = result.insertId
 
-    return NextResponse.json({ id: result.insertId }, { status: 201 })
+    // Usuario administrador del nuevo tenant (rol mas alto disponible dentro de un tenant)
+    const adminPassword = generatePassword()
+    const hashedPassword = await bcrypt.hash(adminPassword, 10)
+
+    const userResult = await callProcedureOut(
+      'sp_user_upsert',
+      {
+        p_tenant_id:    tenantId,
+        p_user_id:      null,
+        p_name:         adminName,
+        p_email:        adminEmail,
+        p_password:     hashedPassword,
+        p_role:         'gestor_proyecto',
+        p_active:       1,
+        p_user_id_exec: Number(ctx.userId),
+      },
+      ['p_result_id', 'p_error'],
+    )
+
+    if (userResult.p_error) {
+      return NextResponse.json({ error: `Empresa creada, pero error al crear el administrador: ${userResult.p_error}` }, { status: 400 })
+    }
+
+    return NextResponse.json({ id: tenantId, adminPassword }, { status: 201 })
   } catch (err) {
     return handleApiError(err)
   }
