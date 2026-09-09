@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface Tenant {
   id: number
@@ -39,11 +39,26 @@ export function TenantsAdminClient({ tenants: initial }: { tenants: Tenant[] }) 
   const [tenants, setTenants] = useState(initial)
   const [showForm, setShowForm] = useState(false)
   const [editTenant, setEditTenant] = useState<Tenant | null>(null)
+  const [origin, setOrigin] = useState('')
+  const [copiedSlug, setCopiedSlug] = useState<string | null>(null)
+
+  useEffect(() => { setOrigin(window.location.origin) }, [])
 
   async function refresh() {
     const res = await fetch('/api/admin/tenants')
     const json = await res.json()
     if (res.ok) setTenants(json.data ?? [])
+  }
+
+  async function copyLoginLink(slug: string) {
+    const link = `${origin}/login?slug=${encodeURIComponent(slug)}`
+    try {
+      await navigator.clipboard.writeText(link)
+      setCopiedSlug(slug)
+      setTimeout(() => setCopiedSlug(prev => (prev === slug ? null : prev)), 2000)
+    } catch {
+      // Clipboard puede fallar (permiso/navegador); el link sigue visible para copiar a mano
+    }
   }
 
   return (
@@ -87,6 +102,28 @@ export function TenantsAdminClient({ tenants: initial }: { tenants: Tenant[] }) 
               {!tenant.active && (
                 <span className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 border border-red-200">inactiva</span>
               )}
+            </div>
+
+            <div className="mb-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Link de acceso</p>
+              <div className="flex items-center gap-1.5">
+                <a
+                  href={`/login?slug=${encodeURIComponent(tenant.slug)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir el login de esta empresa (ver cómo lo ven sus usuarios)"
+                  className="flex-1 text-[11px] font-mono text-gray-600 bg-gray-50 border border-gray-200 rounded px-2 py-1 truncate hover:text-blue-600 hover:border-blue-200"
+                >
+                  /login?slug={tenant.slug}
+                </a>
+                <button
+                  onClick={() => copyLoginLink(tenant.slug)}
+                  title="Copiar link de acceso"
+                  className="shrink-0 text-[10px] font-bold px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50"
+                >
+                  {copiedSlug === tenant.slug ? '¡Copiado!' : 'Copiar'}
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-between items-center pt-3 border-t border-gray-100">
