@@ -28,11 +28,9 @@ export default async function TenantsHomePage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-6">Empresas</h1>
-        <TenantsAdminClient tenants={tenants} />
-      </div>
+    <div>
+      <h1 className="text-2xl font-semibold mb-6">Empresas</h1>
+      <TenantsAdminClient tenants={tenants} />
     </div>
   )
 }
