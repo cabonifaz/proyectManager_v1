@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Role } from '@/lib/rbac'
+import { Pagination } from '@/components/ui/Pagination'
+import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 
 interface Project     { id: number; code: string; name: string; is_member?: number }
 interface TechCol     { id: number; col_key: string; name: string }
@@ -291,6 +293,12 @@ const [search, setSearch]             = useState('')
   const sortedItems = sort.key
     ? [...items].sort((a, b) => compareObs(a, b, sort.key!, sort.dir))
     : items
+
+  // Paginación
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  useEffect(() => { setPage(1) }, [items, sort, pageSize])
+  const pageItems = sortedItems.slice((page - 1) * pageSize, page * pageSize)
 
   // Cierra el dropdown de backlog al hacer click fuera
   useEffect(() => {
@@ -622,7 +630,8 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           {projectId ? 'No hay observaciones registradas.' : 'Selecciona un proyecto.'}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
              <tr>
@@ -682,16 +691,19 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
                 >
                   Registro <SortIcon col="created_at" sort={sort} />
                 </th>
-                <th className="px-3 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {sortedItems.map(item => (
+              {pageItems.map(item => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-3 py-3 whitespace-nowrap">
-                    <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                      #{item.id}
-                    </span>
+                    <RowActionsMenu
+                      trigger={<span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">#{item.id}</span>}
+                      items={[
+                        ...(canEdit ? [{ label: 'Editar', onClick: () => openEdit(item) }] : []),
+                        ...(canDelete ? [{ label: 'Eliminar', onClick: () => { setItemToDelete(item); setIsDeleteModalOpen(true) }, danger: true }] : []),
+                      ]}
+                    />
                   </td>
                   <td className="px-3 py-3">
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${TIPO_STYLES[item.tipo]}`}>
@@ -741,25 +753,14 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
                     <span className="font-medium text-gray-700 block">{item.created_by_name ?? '—'}</span>
                     <span className="text-[10px] text-gray-400 block mt-0.5">{fmtDate(item.created_at)}</span>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex gap-2 justify-end">
-                      {canEdit && (
-                        <button onClick={() => openEdit(item)} className="text-xs text-blue-600 hover:underline">Editar</button>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={() => { setItemToDelete(item); setIsDeleteModalOpen(true) }}
-                          className="text-xs text-red-500 hover:underline"
-                        >
-                          Eliminar
-                        </button>
-                      )}
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+          {items.length > 0 && (
+            <Pagination page={page} totalItems={sortedItems.length} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
+          )}
         </div>
       )}
 

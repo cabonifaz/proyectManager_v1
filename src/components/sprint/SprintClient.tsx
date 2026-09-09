@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import type { Role } from '@/lib/rbac'
+import { Pagination } from '@/components/ui/Pagination'
+import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 
 interface Project { id: number; code: string; name: string; is_member?: number }
 interface Member  { id: number; name: string; role: string }
@@ -157,6 +159,10 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
     })
   }
 
+  // Paginación
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+
   const currentProject = allowedProjects.find(p => p.id === projectId)
   const canManageSprint = role !== 'desarrollador' && (role === 'super_admin' || Number(currentProject?.is_member) > 0)
   const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
@@ -255,6 +261,9 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const sortedItems = sort.key
     ? [...items].sort((a, b) => compareSprintItems(a, b, sort.key!, sort.dir))
     : items
+
+  useEffect(() => { setPage(1) }, [items, sort, pageSize])
+  const pageItems = sortedItems.slice((page - 1) * pageSize, page * pageSize)
 
   const completedItems = items.filter(i => i.status === 'completado').length
   const pct = items.length > 0 ? Math.round(completedItems / items.length * 100) : 0
@@ -467,7 +476,8 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           )}
 
-          <div className="overflow-x-scroll bg-white rounded-lg shadow">
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="overflow-x-scroll">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>
@@ -483,8 +493,6 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                   ))}
                   <th className={thClass('priority', sort)} onClick={() => handleSort('priority')}>Prioridad <SortIcon col="priority" sort={sort} /></th>
                   <th className={thClass('review_date', sort)} onClick={() => handleSort('review_date')}>Fec. Revisión <SortIcon col="review_date" sort={sort} /></th>
-                  <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Comentario</th>
-                  <th className="px-3 py-3 w-16"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -492,7 +500,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                   <tr><td colSpan={99} className="px-3 py-10 text-center text-gray-400">Cargando...</td></tr>
                 ) : items.length === 0 ? (
                   <tr><td colSpan={99} className="px-3 py-10 text-center text-gray-400">No hay items asignados al Sprint #{activeSprint.number}</td></tr>
-                ) : sortedItems.map(item => {
+                ) : pageItems.map(item => {
                   
                   let etaStatus = null;
                   let daysUntil = null;
@@ -509,7 +517,18 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex flex-col items-start gap-1">
-                          <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{item.code}</span>
+                          <RowActionsMenu
+                            trigger={
+                              <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                {item.code}{item.comment && <span className="w-1.5 h-1.5 rounded-full bg-gray-400" title="Tiene nota" />}
+                              </span>
+                            }
+                            items={[
+                              ...(canEditItem ? [{ label: 'Editar', onClick: () => { setEditItem(item); setShowItemForm(true) } }] : []),
+                              { label: 'Checklist', onClick: () => setChecklistExecOpen(item) },
+                              ...(item.comment ? [{ label: 'Ver nota', onClick: () => setViewComment({ code: item.code, comment: item.comment }) }] : []),
+                            ]}
+                          />
                           {item.obs_count !== undefined && item.obs_count > 0 && (
                             <a href={`/${tenant}/observaciones?search=${item.code}`} className="flex items-center gap-1.5 px-1.5 py-0.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 rounded transition-colors text-[9px] font-bold uppercase tracking-widest mt-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></span>
@@ -582,39 +601,15 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
                         {item.review_date ? item.review_date.toString().slice(0, 10) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-xs">
-                        {item.comment ? (
-                          <button
-                            onClick={() => setViewComment({ code: item.code, comment: item.comment })}
-                            className="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-xs transition-colors whitespace-nowrap"
-                          >
-                            Ver nota
-                          </button>
-                        ) : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center gap-2 justify-end">
-                          {canEditItem && (
-                            <button
-                              onClick={() => { setEditItem(item); setShowItemForm(true) }}
-                              className="text-blue-600 hover:underline text-xs font-medium"
-                            >
-                              Editar
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setChecklistExecOpen(item)}
-                            className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-xs transition-colors font-medium whitespace-nowrap"
-                          >
-                             Checklist
-                          </button>
-                        </div>
-                      </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+          </div>
+          {items.length > 0 && (
+            <Pagination page={page} totalItems={sortedItems.length} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
+          )}
           </div>
         </>
       )}

@@ -5,6 +5,9 @@ import * as XLSX from 'xlsx'
 import { ImportModal } from './ImportModal'
 import { useImport } from '@/lib/ImportContext' // 👇 Importación del Contexto Global
 import type { Role } from '@/lib/rbac'
+import { SortIcon, thClass, compareValues, type SortState } from '@/lib/tableSort'
+import { Pagination } from '@/components/ui/Pagination'
+import { RowActionsMenu } from '@/components/ui/RowActionsMenu'
 
 interface Project { id: number; code: string; name: string; is_member?: number }
 interface TechCol  { id: number; col_key: string; name: string; col_type: string; sort_order: number }
@@ -31,6 +34,20 @@ const STATUS_COLORS: Record<string, string> = {
   en_revision: 'bg-yellow-100 text-yellow-700',
   completado:  'bg-green-100 text-green-700',
   bloqueado:   'bg-red-100 text-red-700',
+}
+
+type SortKey = 'code' | 'module' | 'description' | 'progress' | 'status' | 'sprint_num' | 'eta'
+
+function compareBacklogItems(a: BacklogItem, b: BacklogItem, key: SortKey, dir: 'asc' | 'desc'): number {
+  switch (key) {
+    case 'code':        return compareValues(a.code, b.code, dir)
+    case 'module':      return compareValues(a.module, b.module, dir)
+    case 'description': return compareValues(a.description?.toLowerCase(), b.description?.toLowerCase(), dir)
+    case 'progress':    return compareValues(Number(a.progress) || 0, Number(b.progress) || 0, dir)
+    case 'status':      return compareValues(a.status, b.status, dir)
+    case 'sprint_num':  return compareValues(a.sprint_num ?? '', b.sprint_num ?? '', dir)
+    case 'eta':         return compareValues(a.eta ?? '', b.eta ?? '', dir)
+  }
 }
 
 export function BacklogClient({ projects, tenant, role }: {
@@ -114,6 +131,25 @@ const [sprintFilter, setSprint]         = useState('')
   const canEdit       = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
   const canDelete     = ['super_admin','gestor_proyecto'].includes(role)
   const canManageCols = ['super_admin','gestor_proyecto'].includes(role)
+
+  // Ordenamiento
+  const [sort, setSort] = useState<SortState<SortKey>>({ key: null, dir: 'asc' })
+  function handleSort(col: SortKey) {
+    setSort(prev => {
+      if (prev.key !== col) return { key: col, dir: 'asc' }
+      if (prev.dir === 'asc') return { key: col, dir: 'desc' }
+      return { key: null, dir: 'asc' }
+    })
+  }
+  const sortedItems = sort.key
+    ? [...items].sort((a, b) => compareBacklogItems(a, b, sort.key!, sort.dir))
+    : items
+
+  // Paginación
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  useEffect(() => { setPage(1) }, [items, sort, pageSize])
+  const pageItems = sortedItems.slice((page - 1) * pageSize, page * pageSize)
 
   const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
     if (!projectId) return []
@@ -396,25 +432,23 @@ const [sprintFilter, setSprint]         = useState('')
       )}
 
       {/* Tabla */}
-      <div className="overflow-x-scroll bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-scroll">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Código</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Módulo</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 min-w-48">Descripción</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Avance</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Estado</th>
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Sprint</th>
-              
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">ETA</th>
+              <th className={thClass<SortKey>('code', sort)} onClick={() => handleSort('code')}>Código <SortIcon col="code" sort={sort} /></th>
+              <th className={thClass<SortKey>('module', sort)} onClick={() => handleSort('module')}>Módulo <SortIcon col="module" sort={sort} /></th>
+              <th className={`${thClass<SortKey>('description', sort)} min-w-48`} onClick={() => handleSort('description')}>Descripción <SortIcon col="description" sort={sort} /></th>
+              <th className={thClass<SortKey>('progress', sort)} onClick={() => handleSort('progress')}>Avance <SortIcon col="progress" sort={sort} /></th>
+              <th className={thClass<SortKey>('status', sort)} onClick={() => handleSort('status')}>Estado <SortIcon col="status" sort={sort} /></th>
+              <th className={thClass<SortKey>('sprint_num', sort)} onClick={() => handleSort('sprint_num')}>Sprint <SortIcon col="sprint_num" sort={sort} /></th>
+              <th className={thClass<SortKey>('eta', sort)} onClick={() => handleSort('eta')}>ETA <SortIcon col="eta" sort={sort} /></th>
               {techCols.map(c => (
                 <th key={c.col_key} className="px-3 py-3 text-left font-medium text-blue-600 whitespace-nowrap">
                   {c.name}
                 </th>
               ))}
-              <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">Comentario</th>
-              <th className="px-3 py-3 w-20"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -426,9 +460,19 @@ const [sprintFilter, setSprint]         = useState('')
                   {allowedProjects.length === 0 ? 'No hay proyectos disponibles para su rol' : 'Sin resultados'}
                 </td>
               </tr>
-            ) : items.map(item => (
+            ) : pageItems.map(item => (
               <tr key={item.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{item.code}</td>
+                <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                  <RowActionsMenu
+                    trigger={<span className="inline-flex items-center gap-1">{item.code}{item.comment && <span className="w-1.5 h-1.5 rounded-full bg-gray-400" title="Tiene nota" />}</span>}
+                    items={[
+                      { label: `Tareas (${item.task_count || 0})`, onClick: () => setChecklistOpen(item) },
+                      ...(item.comment ? [{ label: 'Ver nota', onClick: () => setViewComment({ code: item.code, comment: item.comment }) }] : []),
+                      ...(canEdit ? [{ label: 'Editar', onClick: () => { setEditItem(item); setShowForm(true) } }] : []),
+                      ...(canDelete ? [{ label: 'Eliminar', onClick: () => { setItemToDelete(item.id); setIsDeleteModalOpen(true) }, danger: true }] : []),
+                    ]}
+                  />
+                </td>
                 <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{item.module || '—'}</td>
                 <td className="px-3 py-2 max-w-xs">
                   <span className="line-clamp-2 block">{item.description}</span>
@@ -456,57 +500,21 @@ const [sprintFilter, setSprint]         = useState('')
                   return (
                     <td key={col.col_key} className="px-3 py-2 text-xs">
                       <div className="text-gray-700 whitespace-nowrap">
-                        {users.length > 0 
-                          ? users.map(u => u.name).join(', ') 
+                        {users.length > 0
+                          ? users.map(u => u.name).join(', ')
                           : manualValue ? manualValue : '—'}
                       </div>
                     </td>
                   )
                 })}
-                <td className="px-3 py-2 text-xs">
-                  {item.comment ? (
-                    <button
-                      onClick={() => setViewComment({ code: item.code, comment: item.comment })}
-                      className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded text-[10px] font-bold uppercase transition-colors whitespace-nowrap"
-                    >
-                      Ver nota
-                    </button>
-                  ) : (
-                    <span className="text-gray-300">—</span>
-                  )}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <div className="flex justify-end gap-3 items-center">
-                    {/* 🚀 BOTÓN ACTUALIZADO AQUÍ */}
-                    <button
-                      onClick={() => setChecklistOpen(item)}
-                      className="text-indigo-600 hover:text-indigo-800 text-[10px] font-bold uppercase transition-colors"
-                    >
-                       TAREAS({item.task_count || 0})
-                    </button>
-
-                    {canEdit && (
-                      <button
-                        onClick={() => { setEditItem(item); setShowForm(true) }}
-                        className="text-blue-600 hover:text-blue-800 text-[10px] font-bold uppercase transition-colors"
-                      >
-                        Editar
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button
-                        onClick={() => { setItemToDelete(item.id); setIsDeleteModalOpen(true); }}
-                        className="text-red-500 hover:text-red-700 text-[10px] font-bold uppercase transition-colors"
-                      >
-                        Eliminar
-                      </button>
-                    )}
-                  </div>
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
+        {items.length > 0 && (
+          <Pagination page={page} totalItems={sortedItems.length} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={setPageSize} />
+        )}
       </div>
 
       {showForm && projectId && (
