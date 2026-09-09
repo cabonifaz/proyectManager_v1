@@ -12,6 +12,7 @@ const NAV = [
   { label: 'Observaciones', href: 'observaciones', roles: ['super_admin','gestor_proyecto','lider_tecnico','desarrollador'], icon: 'alert' },
   { label: 'Dashboard',  href: 'dashboard', roles: ['super_admin','gestor_proyecto','lider_tecnico'], icon: 'chart' },
   { label: 'Usuarios',   href: 'users',     roles: ['super_admin','gestor_proyecto'], icon: 'users' },
+  { label: 'Empresas',   href: '/admin/tenants', roles: ['super_admin'], icon: 'building', absolute: true },
 ]
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -21,6 +22,7 @@ const ICONS: Record<string, React.ReactNode> = {
   alert: <><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>,
   chart: <><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>,
   users: <><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>,
+  building: <><rect x="4" y="2" width="16" height="20" rx="1" /><line x1="9" y1="6" x2="9" y2="6.01" /><line x1="15" y1="6" x2="15" y2="6.01" /><line x1="9" y1="10" x2="9" y2="10.01" /><line x1="15" y1="10" x2="15" y2="10.01" /><line x1="9" y1="14" x2="9" y2="14.01" /><line x1="15" y1="14" x2="15" y2="14.01" /><line x1="9" y1="18" x2="15" y2="18" /></>,
 }
 
 function Icon({ name }: { name: string }) {
@@ -78,7 +80,7 @@ export function Sidebar({ tenant, tenantName, logoUrl, role, userName }: {
 
       <nav className="flex-1 px-2 py-4 space-y-1">
         {NAV.filter(n => n.roles.includes(role)).map(n => {
-          const href = `/${tenant}/${n.href}`
+          const href = n.absolute ? n.href : `/${tenant}/${n.href}`
           const active = pathname.startsWith(href)
           return (
             <Link
