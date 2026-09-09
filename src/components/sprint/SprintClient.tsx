@@ -483,16 +483,16 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                 <tr>
                   <th className={thClass('code', sort)} onClick={() => handleSort('code')}>Código <SortIcon col="code" sort={sort} /></th>
                   <th className={thClass('module', sort)} onClick={() => handleSort('module')}>Módulo <SortIcon col="module" sort={sort} /></th>
+                  <th className={thClass('priority', sort)} onClick={() => handleSort('priority')}>Prioridad <SortIcon col="priority" sort={sort} /></th>
                  <th className={`${thClass('description', sort)} min-w-[300px]`} onClick={() => handleSort('description')}>Descripción <SortIcon col="description" sort={sort} /></th>
                   <th className={thClass('progress', sort)} onClick={() => handleSort('progress')}>Avance <SortIcon col="progress" sort={sort} /></th>
                   <th className={thClass('status', sort)} onClick={() => handleSort('status')}>Estado <SortIcon col="status" sort={sort} /></th>
                   <th className={thClass('eta', sort)} onClick={() => handleSort('eta')}>ETA <SortIcon col="eta" sort={sort} /></th>
-                  <th className={thClass('reg_date', sort)} onClick={() => handleSort('reg_date')}>Fec. Reg <SortIcon col="reg_date" sort={sort} /></th>
+                  <th className={thClass('review_date', sort)} onClick={() => handleSort('review_date')}>Fec. Revisión <SortIcon col="review_date" sort={sort} /></th>
                   {techCols.map(c => (
                     <th key={c.col_key} className="px-3 py-3 text-left font-medium text-blue-600 whitespace-nowrap">{c.name}</th>
                   ))}
-                  <th className={thClass('priority', sort)} onClick={() => handleSort('priority')}>Prioridad <SortIcon col="priority" sort={sort} /></th>
-                  <th className={thClass('review_date', sort)} onClick={() => handleSort('review_date')}>Fec. Revisión <SortIcon col="review_date" sort={sort} /></th>
+                  <th className={thClass('reg_date', sort)} onClick={() => handleSort('reg_date')}>Fec. Reg <SortIcon col="reg_date" sort={sort} /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -538,6 +538,15 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{item.module || '—'}</td>
+                      <td className="px-3 py-2 text-xs text-center font-bold text-gray-700 whitespace-nowrap">
+  {item.status === 'completado' || Number(item.priority || 0) === 0 ? (
+    <span className="text-gray-300 font-normal">—</span>
+  ) : (
+    <span className={Number(item.priority) >= 8 ? 'text-red-600' : 'text-blue-600'}>
+      P: {Number(item.priority)}
+    </span>
+  )}
+</td>
                       <td className="px-3 py-2 min-w-[300px]">
   <span className="line-clamp-2 block font-medium text-gray-800">{item.description}</span>
 </td>
@@ -572,34 +581,25 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                        {item.reg_date ? item.reg_date.toString().slice(0, 10) : '—'}
+                        {item.review_date ? item.review_date.toString().slice(0, 10) : '—'}
                       </td>
                       {techCols.map(col => {
                         const val = item.tech_columns?.find(t => t.col_key === col.col_key)
                         const users = val?.assigned_users || []
                         const manualValue = val?.value || ''
-                        
+
                         return (
                           <td key={col.col_key} className="px-3 py-2 text-xs">
                             <div className="text-gray-700 whitespace-nowrap">
-                              {users.length > 0 
-                                ? users.map(u => u.name).join(', ') 
+                              {users.length > 0
+                                ? users.map(u => u.name).join(', ')
                                 : manualValue ? manualValue : '—'}
                             </div>
                           </td>
                         )
                       })}
-                      <td className="px-3 py-2 text-xs text-center font-bold text-gray-700 border-x border-gray-100 whitespace-nowrap">
-  {item.status === 'completado' || Number(item.priority || 0) === 0 ? (
-    <span className="text-gray-300 font-normal">—</span>
-  ) : (
-    <span className={Number(item.priority) >= 8 ? 'text-red-600' : 'text-blue-600'}>
-      P: {Number(item.priority)}
-    </span>
-  )}
-</td>
                       <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                        {item.review_date ? item.review_date.toString().slice(0, 10) : '—'}
+                        {item.reg_date ? item.reg_date.toString().slice(0, 10) : '—'}
                       </td>
                     </tr>
                   )
