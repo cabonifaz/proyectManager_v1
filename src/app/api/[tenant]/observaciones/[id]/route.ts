@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedureOut } from '@/lib/db'
+import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { callProcedureOut, query } from '@/lib/db'
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'observacion:update')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const obsRows: any = await query(`SELECT project_id FROM observaciones WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!obsRows || obsRows.length === 0) return NextResponse.json({ error: 'Observación no encontrada' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'observacion:update', obsRows[0].project_id)
+    if (permError) return permError
 
     let body: Record<string, any> = {}
     try { body = await req.json() } catch {
@@ -50,8 +56,14 @@ export async function DELETE(
   { params }: { params: { id: string } },
 ) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'observacion:delete')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const obsRows: any = await query(`SELECT project_id FROM observaciones WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!obsRows || obsRows.length === 0) return NextResponse.json({ error: 'Observación no encontrada' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'observacion:delete', obsRows[0].project_id)
+    if (permError) return permError
 
     const result = await callProcedureOut(
       'sp_observacion_delete',

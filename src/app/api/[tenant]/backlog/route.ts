@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic' // 🚀 ESTA LÍNEA ELIMINA LA CACHÉ
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, guardProjectRoute, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 import { getServerSession } from 'next-auth'
@@ -136,15 +136,15 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:create')
-    if (errorResponse) return errorResponse
-
     let body: Record<string, unknown> = {}
     try {
       body = await req.json()
     } catch {
       return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
     }
+
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'backlog:create', Number(body.projectId) || null)
+    if (errorResponse) return errorResponse
 
     const result = await callProcedureOut(
       'sp_backlog_create',

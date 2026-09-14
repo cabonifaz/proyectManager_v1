@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
 import { callProcedureOut, query } from '@/lib/db'
 
 export async function PATCH(req: NextRequest, { params }: { params: { tenant: string; taskId: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:update')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
     const taskId = Number(params.taskId)
+
+    const taskProjRows: any = await query(
+      `SELECT bi.project_id FROM backlog_item_tasks t JOIN backlog_items bi ON bi.id = t.backlog_item_id WHERE t.id = ?`,
+      [taskId],
+    )
+    if (!taskProjRows || taskProjRows.length === 0) return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'backlog:update', taskProjRows[0].project_id)
+    if (permError) return permError
+
     const body = await req.json()
 
     // ESCENARIO 1: Toggle de estado (Check / Uncheck)
@@ -80,17 +90,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
 // DELETE: Elimina LÓGICAMENTE una tarea y recalcula el progreso restante
 export async function DELETE(req: NextRequest, { params }: { params: { tenant: string; taskId: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:delete')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
     const taskId = Number(params.taskId)
-    
-    // 1. Buscamos el ID del ticket padre
-    const taskRows: any = await query('SELECT backlog_item_id FROM backlog_item_tasks WHERE id = ?', [taskId])
+
+    // 1. Buscamos el ID del ticket padre (y su proyecto, para el permiso)
+    const taskRows: any = await query(
+      `SELECT t.backlog_item_id, bi.project_id FROM backlog_item_tasks t JOIN backlog_items bi ON bi.id = t.backlog_item_id WHERE t.id = ?`,
+      [taskId],
+    )
     if (taskRows.length === 0) {
       return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
     }
     const backlogItemId = taskRows[0].backlog_item_id
+
+    const permError = await requireProjectPermission(ctx, 'backlog:delete', taskRows[0].project_id)
+    if (permError) return permError
 
     // 2. 🚀 ELIMINACIÓN LÓGICA DE LA TAREA (Asignando fecha y usuario)
     await query(

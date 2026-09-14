@@ -18,10 +18,15 @@ export function RowActionsMenu({ trigger, items }: { trigger: React.ReactNode; i
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="inline-flex items-center gap-1 hover:text-blue-600 transition-colors"
+        title="Ver acciones"
+        className={`inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-md border transition-colors ${
+          open
+            ? 'bg-blue-50 border-blue-400 text-blue-700'
+            : 'bg-gray-50 border-gray-300 text-gray-700 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700'
+        }`}
       >
         {trigger}
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 opacity-50">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>

@@ -69,6 +69,18 @@ export function hasPermission(role: Role, permission: Permission): boolean {
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false
 }
 
+const ROLE_RANK: Record<Role, number> = {
+  desarrollador:   1,
+  lider_tecnico:   2,
+  gestor_proyecto: 3,
+  super_admin:     4,
+}
+
+/** El de mayor jerarquia entre dos roles (usado para elevar el rol efectivo de un usuario dentro de un proyecto). */
+export function higherRole(a: Role, b: Role): Role {
+  return ROLE_RANK[a] >= ROLE_RANK[b] ? a : b
+}
+
 export function getPermissions(role: Role): Permission[] {
   return ROLE_PERMISSIONS[role] ?? []
 }

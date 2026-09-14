@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
 import { callProcedureOut, query } from '@/lib/db'
 
 export async function PATCH(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:update')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
     const id = Number(params.id)
     const body = await req.json()
@@ -23,12 +23,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
         `SELECT sprint_num, priority, project_id, status FROM backlog_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
         [id]
     );
-    
+
     if (!currentTicketInfo || currentTicketInfo.length === 0) {
         return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 });
     }
 
     const projectId = currentTicketInfo[0].project_id;
+
+    const permError = await requireProjectPermission(ctx, 'backlog:update', projectId)
+    if (permError) return permError
     const sprintNum = currentTicketInfo[0].sprint_num !== null 
                         ? currentTicketInfo[0].sprint_num 
                         : (body.sprintNum ?? 0);
@@ -168,8 +171,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
 // ... función DELETE se mantiene igual
 export async function DELETE(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:delete')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const rows: any = await query(`SELECT project_id FROM backlog_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!rows || rows.length === 0) return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'backlog:delete', rows[0].project_id)
+    if (permError) return permError
 
     const result = await callProcedureOut(
       'sp_backlog_delete',

@@ -1,9 +1,13 @@
-import { NextResponse } from 'next/server';
-import { query } from '@/lib/db'; 
+import { NextRequest, NextResponse } from 'next/server';
+import { guardRoute, handleApiError } from '@/lib/session'
+import { query } from '@/lib/db';
 
-export async function GET(req: Request, { params }: { params: { tenant: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { errorResponse } = await guardRoute(req, 'sprint:read')
+    if (errorResponse) return errorResponse
+
+    const { searchParams } = req.nextUrl;
     const projectId = searchParams.get('projectId');
     const sprintNum = searchParams.get('sprintNum');
 
@@ -18,8 +22,7 @@ export async function GET(req: Request, { params }: { params: { tenant: string }
     ]);
 
     return NextResponse.json({ data: rows[0] });
-  } catch (error) {
-    console.error("Error en sprint_obs_load:", error);
-    return NextResponse.json({ error: 'Error al obtener carga de observaciones' }, { status: 500 });
+  } catch (err) {
+    return handleApiError(err)
   }
 }

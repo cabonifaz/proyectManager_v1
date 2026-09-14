@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
 import { query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string; id: string; itemId: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'sprint:assign_talent')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
     const body = await req.json()
     const backlogItemId = Number(params.itemId) // El ID del cliente mapea a backlog_item_id
@@ -26,6 +26,9 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     
     const realSprintItemId = itemRows[0].id
     const projectId = itemRows[0].project_id
+
+    const permError = await requireProjectPermission(ctx, 'sprint:assign_talent', projectId)
+    if (permError) return permError
 
     // 2. Traer a los usuarios asignados utilizando la clave primaria real (realSprintItemId)
     const currentRows = await query<RowDataPacket>(

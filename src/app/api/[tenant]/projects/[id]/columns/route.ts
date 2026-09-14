@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, guardProjectRoute, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'project:manage_columns')
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'project:manage_columns', Number(params.id))
     if (errorResponse) return errorResponse
 
     const body   = await req.json()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions, AppUser } from '@/lib/auth'
-import { Role, Permission, hasPermission, ForbiddenError } from '@/lib/rbac'
+import { Role, Permission, hasPermission, higherRole, ForbiddenError } from '@/lib/rbac'
 import { query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -69,6 +69,58 @@ export async function guardRoute(
   if (!hasPermission(ctx.role, permission)) {
     return { ctx: null, errorResponse: NextResponse.json({ error: `Permiso requerido: ${permission}` }, { status: 403 }) }
   }
+
+  return { ctx, errorResponse: null }
+}
+
+interface ProjectRoleRow extends RowDataPacket { role: Role }
+
+/** Rol que tiene el usuario dentro de un proyecto especifico (asignado via "Asignar" en Usuarios), o null si no tiene uno. */
+export async function getProjectRole(tenantId: number, projectId: number, userId: number): Promise<Role | null> {
+  const rows = await query<ProjectRoleRow>(
+    `SELECT role FROM project_members WHERE tenant_id = ? AND project_id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1`,
+    [tenantId, projectId, userId],
+  )
+  return rows[0]?.role ?? null
+}
+
+/**
+ * Rol efectivo de un usuario para un proyecto: el mayor entre su rol global y el rol que
+ * tenga asignado en ESE proyecto (project_members.role). super_admin siempre es super_admin.
+ * Sin projectId, el rol efectivo es simplemente el rol global.
+ */
+export async function getEffectiveRole(ctx: RequestContext, projectId: number | null): Promise<Role> {
+  if (!projectId || ctx.role === 'super_admin') return ctx.role
+  const projectRole = await getProjectRole(ctx.tenantId, projectId, ctx.userId)
+  return projectRole ? higherRole(ctx.role, projectRole) : ctx.role
+}
+
+/** Verifica un permiso usando el rol EFECTIVO (elevado por rol de proyecto si aplica). Devuelve la respuesta 403 o null si pasa. */
+export async function requireProjectPermission(
+  ctx: RequestContext,
+  permission: Permission,
+  projectId: number | null,
+): Promise<NextResponse | null> {
+  const effectiveRole = await getEffectiveRole(ctx, projectId)
+  if (!hasPermission(effectiveRole, permission)) {
+    return NextResponse.json({ error: `Permiso requerido: ${permission}` }, { status: 403 })
+  }
+  return null
+}
+
+/** Como guardRoute, pero el permiso se evalua contra el rol efectivo del proyecto (ya conocido) en vez del rol global. */
+export async function guardProjectRoute(
+  req: NextRequest,
+  permission: Permission,
+  projectId: number | null,
+): Promise<{ ctx: RequestContext; errorResponse: null } | { ctx: null; errorResponse: NextResponse }> {
+  const ctx = await getContextFromHeaders(req)
+  if (!ctx) {
+    return { ctx: null, errorResponse: NextResponse.json({ error: 'No autenticado' }, { status: 401 }) }
+  }
+
+  const errorResponse = await requireProjectPermission(ctx, permission, projectId)
+  if (errorResponse) return { ctx: null, errorResponse }
 
   return { ctx, errorResponse: null }
 }

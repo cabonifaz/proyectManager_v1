@@ -275,10 +275,22 @@ const [search, setSearch]             = useState('')
   // ── NUEVO: estado de ordenamiento ──
   const [sort, setSort] = useState<SortState>({ key: null, dir: 'asc' })
 
-  const canCreate = role !== 'desarrollador'
-  const canEdit   = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
-  const canDelete = ['super_admin','gestor_proyecto'].includes(role)
-  const canAssign = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
+  // Rol efectivo para el proyecto seleccionado: el global, elevado si tiene un rol asignado en ESE proyecto
+  const [effectiveRole, setEffectiveRole] = useState<Role>(role)
+  useEffect(() => {
+    if (!projectId) { setEffectiveRole(role); return }
+    let cancelled = false
+    fetch(`/api/${tenant}/projects/${projectId}/my-role`)
+      .then(res => res.json())
+      .then(json => { if (!cancelled && json.role) setEffectiveRole(json.role) })
+      .catch(() => { if (!cancelled) setEffectiveRole(role) })
+    return () => { cancelled = true }
+  }, [projectId, tenant, role])
+
+  const canCreate = effectiveRole !== 'desarrollador'
+  const canEdit   = ['super_admin','gestor_proyecto','lider_tecnico'].includes(effectiveRole)
+  const canDelete = ['super_admin','gestor_proyecto'].includes(effectiveRole)
+  const canAssign = ['super_admin','gestor_proyecto','lider_tecnico'].includes(effectiveRole)
 
   // ── Ciclo asc → desc → sin orden al hacer click en columna ──
   function handleSort(col: SortKey) {
@@ -698,7 +710,7 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-3 py-3 whitespace-nowrap">
                     <RowActionsMenu
-                      trigger={<span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">#{item.id}</span>}
+                      trigger={<span className="font-mono text-xs font-bold">#{item.id}</span>}
                       items={[
                         ...(canEdit ? [{ label: 'Editar', onClick: () => openEdit(item) }] : []),
                         ...(canDelete ? [{ label: 'Eliminar', onClick: () => { setItemToDelete(item); setIsDeleteModalOpen(true) }, danger: true }] : []),

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
 import { callProcedureOut, query } from '@/lib/db'
 
 // GET: Obtiene todas las tareas de un ticket específico
@@ -26,8 +26,14 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 // POST: Crea una nueva tarea dentro de un ticket
 export async function POST(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:create')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const projRows: any = await query(`SELECT project_id FROM backlog_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!projRows || projRows.length === 0) return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'backlog:create', projRows[0].project_id)
+    if (permError) return permError
 
     const body = await req.json()
     const { descripcion, peso } = body

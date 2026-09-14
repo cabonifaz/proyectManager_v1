@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedureOut } from '@/lib/db'
+import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { callProcedureOut, query } from '@/lib/db'
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:update_tech')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const projRows: any = await query(`SELECT project_id FROM backlog_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!projRows || projRows.length === 0) return NextResponse.json({ error: 'Ticket no encontrado' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'backlog:update_tech', projRows[0].project_id)
+    if (permError) return permError
 
     const body = await req.json()
     const result = await callProcedureOut(

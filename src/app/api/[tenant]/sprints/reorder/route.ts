@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedureOut } from '@/lib/db'
+import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { callProcedureOut, query } from '@/lib/db'
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'sprint_item:update')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
     const body = await req.json()
     const sprintId = Number(body.sprintId)
@@ -14,6 +14,12 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     if (!sprintId || !Array.isArray(data)) {
       return NextResponse.json({ error: 'Datos de reordenamiento inválidos' }, { status: 400 })
     }
+
+    const sprintRows: any = await query(`SELECT project_id FROM sprints WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [sprintId])
+    if (!sprintRows || sprintRows.length === 0) return NextResponse.json({ error: 'Sprint no encontrado' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'sprint_item:update', sprintRows[0].project_id)
+    if (permError) return permError
 
     const result = await callProcedureOut(
       'sp_sprint_items_reordenar',

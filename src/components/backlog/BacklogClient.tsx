@@ -127,10 +127,22 @@ const [sprintFilter, setSprint]         = useState('')
     })
   }
 
-  const canCreate     = ['super_admin','gestor_proyecto'].includes(role)
-  const canEdit       = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
-  const canDelete     = ['super_admin','gestor_proyecto'].includes(role)
-  const canManageCols = ['super_admin','gestor_proyecto'].includes(role)
+  // Rol efectivo para el proyecto seleccionado: el global, elevado si tiene un rol asignado en ESE proyecto
+  const [effectiveRole, setEffectiveRole] = useState<Role>(role)
+  useEffect(() => {
+    if (!projectId) { setEffectiveRole(role); return }
+    let cancelled = false
+    fetch(`/api/${tenant}/projects/${projectId}/my-role`)
+      .then(res => res.json())
+      .then(json => { if (!cancelled && json.role) setEffectiveRole(json.role) })
+      .catch(() => { if (!cancelled) setEffectiveRole(role) })
+    return () => { cancelled = true }
+  }, [projectId, tenant, role])
+
+  const canCreate     = ['super_admin','gestor_proyecto'].includes(effectiveRole)
+  const canEdit       = ['super_admin','gestor_proyecto','lider_tecnico'].includes(effectiveRole)
+  const canDelete     = ['super_admin','gestor_proyecto'].includes(effectiveRole)
+  const canManageCols = ['super_admin','gestor_proyecto'].includes(effectiveRole)
 
   // Ordenamiento
   const [sort, setSort] = useState<SortState<SortKey>>({ key: null, dir: 'asc' })

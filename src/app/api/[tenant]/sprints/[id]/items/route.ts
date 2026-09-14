@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedure, callProcedureOut } from '@/lib/db'
+import { guardRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { callProcedure, callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
 export async function GET(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
@@ -34,8 +34,14 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'sprint_item:create')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const sprintRows: any = await query(`SELECT project_id FROM sprints WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!sprintRows || sprintRows.length === 0) return NextResponse.json({ error: 'Sprint no encontrado' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'sprint_item:create', sprintRows[0].project_id)
+    if (permError) return permError
 
     const body   = await req.json()
     const result = await callProcedureOut(

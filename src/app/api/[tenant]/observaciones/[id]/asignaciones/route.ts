@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
 import { query, withTransaction } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -48,15 +48,22 @@ export async function POST(
   { params }: { params: { tenant: string; id: string } },
 ) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'observacion:update')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    const observacionId = Number(params.id)
+
+    const obsRows: any = await query(`SELECT project_id FROM observaciones WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [observacionId])
+    if (!obsRows || obsRows.length === 0) return NextResponse.json({ error: 'Observación no encontrada' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'observacion:update', obsRows[0].project_id)
+    if (permError) return permError
 
     let body: { asignaciones: AsignacionInput[] } = { asignaciones: [] }
     try { body = await req.json() } catch {
       return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
     }
 
-    const observacionId = Number(params.id)
     const { asignaciones } = body
 
     await withTransaction(async (conn) => {

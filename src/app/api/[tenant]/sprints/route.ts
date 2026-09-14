@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, guardProjectRoute, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -24,10 +24,10 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'sprint:manage')
+    const body   = await req.json()
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'sprint:manage', Number(body.projectId) || null)
     if (errorResponse) return errorResponse
 
-    const body   = await req.json()
     const result = await callProcedureOut(
       'sp_sprint_upsert',
       {

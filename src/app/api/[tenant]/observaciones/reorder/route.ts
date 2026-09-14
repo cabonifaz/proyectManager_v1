@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardProjectRoute, handleApiError } from '@/lib/session'
 import { callProcedureOut } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
-    // 🚀 1. Ahora sí extraemos 'ctx' de tu guardRoute
-    const { ctx, errorResponse } = await guardRoute(req, 'observacion:update')
-    if (errorResponse) return errorResponse
-
     const body = await req.json()
     const { projectId, data } = body
 
     if (!projectId || !data || !Array.isArray(data)) {
       return NextResponse.json({ error: 'Parámetros obligatorios ausentes o inválidos' }, { status: 400 })
     }
+
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'observacion:update', Number(projectId) || null)
+    if (errorResponse) return errorResponse
 
     const result: any = await callProcedureOut('sp_observaciones_reordenar', {
       p_tenant_id: ctx.tenantId, // 🚀 2. Usamos el tenantId real y numérico

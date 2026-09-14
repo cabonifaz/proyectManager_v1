@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Role } from '@/lib/rbac'
+import { higherRole } from '@/lib/rbac'
 
 interface Project {
   id: number
@@ -10,7 +11,7 @@ interface Project {
   name: string
   description: string
   status: string
-  methodology: string 
+  methodology: string
   start_date: string | null
   end_date: string | null
   manager_name: string | null
@@ -19,6 +20,7 @@ interface Project {
   avg_progress: number
   completion_pct: number
   is_member: number
+  member_role: Role | null
   obs_total: number
   obs_completadas: number
 }
@@ -84,7 +86,8 @@ export function ProjectsClient({ tenant, role, userId }: {
 
   function canEditProject(p: Project): boolean {
     if (isSuperAdmin) return true
-    if (isGestor && p.is_member === 1) return true
+    const effectiveRole = p.member_role ? higherRole(role, p.member_role) : role
+    if (['gestor_proyecto'].includes(effectiveRole) && (isGestor || p.is_member === 1 || !!p.member_role)) return true
     return false
   }
 

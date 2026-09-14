@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedure, callProcedureOut } from '@/lib/db' // <-- Importamos callProcedureOut
+import { callProcedure, callProcedureOut, query } from '@/lib/db' // <-- Importamos callProcedureOut
 import { RowDataPacket } from 'mysql2/promise'
 
 export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
@@ -23,7 +23,16 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
       [ctx.tenantId, status, ctx.userId],
     )
 
-    return NextResponse.json({ data: results[0] ?? [] })
+    // Rol asignado por proyecto (via "Asignar" en Usuarios), para que el cliente pueda
+    // elevar permisos donde corresponda sin tener que consultarlo proyecto por proyecto.
+    const memberRoles: any = await query(
+      `SELECT project_id, role FROM project_members WHERE tenant_id = ? AND user_id = ? AND deleted_at IS NULL`,
+      [ctx.tenantId, ctx.userId],
+    )
+    const roleByProject = new Map(memberRoles.map((r: any) => [r.project_id, r.role]))
+    const data = (results[0] ?? []).map((p: any) => ({ ...p, member_role: roleByProject.get(p.id) ?? null }))
+
+    return NextResponse.json({ data })
   } catch (err) {
     return handleApiError(err)
   }

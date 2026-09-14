@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -45,8 +45,13 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
 export async function PATCH(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'project:update')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    // El rol de proyecto puede elevar (ej. un usuario "gestor" en este proyecto puntual),
+    // pero igual debe ser miembro del proyecto — checkProjectAccess se mantiene sin cambios.
+    const permError = await requireProjectPermission(ctx, 'project:update', Number(params.id))
+    if (permError) return permError
 
     const hasAccess = await checkProjectAccess(
       ctx.tenantId, Number(params.id), ctx.userId, ctx.role

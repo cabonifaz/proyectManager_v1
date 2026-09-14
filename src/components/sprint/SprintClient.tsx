@@ -164,8 +164,21 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [pageSize, setPageSize] = useState(20)
 
   const currentProject = allowedProjects.find(p => p.id === projectId)
-  const canManageSprint = role !== 'desarrollador' && (role === 'super_admin' || Number(currentProject?.is_member) > 0)
-  const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(role)
+
+  // Rol efectivo para el proyecto seleccionado: el global, elevado si tiene un rol asignado en ESE proyecto
+  const [effectiveRole, setEffectiveRole] = useState<Role>(role)
+  useEffect(() => {
+    if (!projectId) { setEffectiveRole(role); return }
+    let cancelled = false
+    fetch(`/api/${tenant}/projects/${projectId}/my-role`)
+      .then(res => res.json())
+      .then(json => { if (!cancelled && json.role) setEffectiveRole(json.role) })
+      .catch(() => { if (!cancelled) setEffectiveRole(role) })
+    return () => { cancelled = true }
+  }, [projectId, tenant, role])
+
+  const canManageSprint = effectiveRole !== 'desarrollador' && (effectiveRole === 'super_admin' || Number(currentProject?.is_member) > 0)
+  const canEditItem     = ['super_admin','gestor_proyecto','lider_tecnico'].includes(effectiveRole)
 
   const fetchObsLoad = useCallback(async (sprintNum: number) => {
     if (!projectId) return
@@ -519,7 +532,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                         <div className="flex flex-col items-start gap-1">
                           <RowActionsMenu
                             trigger={
-                              <span className="inline-flex items-center gap-1 font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                              <span className="inline-flex items-center gap-1 font-mono text-xs font-bold">
                                 {item.code}{item.comment && <span className="w-1.5 h-1.5 rounded-full bg-gray-400" title="Tiene nota" />}
                               </span>
                             }

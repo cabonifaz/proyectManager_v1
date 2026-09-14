@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedureOut } from '@/lib/db'
+import { guardProjectRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { callProcedureOut, query } from '@/lib/db'
 
 export async function PATCH(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'sprint:manage')
+    const body = await req.json()
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'sprint:manage', Number(body.projectId) || null)
     if (errorResponse) return errorResponse
 
-    const body   = await req.json()
     const result = await callProcedureOut(
       'sp_sprint_upsert',
       {
@@ -34,8 +34,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
 
 export async function DELETE(req: NextRequest, { params }: { params: { tenant: string; id: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'sprint:manage')
-    if (errorResponse) return errorResponse
+    const ctx = await getContextFromHeaders(req)
+    if (!ctx) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+    // Nota: pese al nombre de la ruta (sprints/[id]), este handler borra un sprint_item, no un sprint.
+    const rows: any = await query(`SELECT project_id FROM sprint_items WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [Number(params.id)])
+    if (!rows || rows.length === 0) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
+
+    const permError = await requireProjectPermission(ctx, 'sprint:manage', rows[0].project_id)
+    if (permError) return permError
 
     const result = await callProcedureOut(
       'sp_sprint_item_delete',

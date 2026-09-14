@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardProjectRoute, handleApiError } from '@/lib/session'
 import { callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -60,9 +60,6 @@ function parseDateStr(val: any): string | null {
 
 export async function POST(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'backlog:create')
-    if (errorResponse) return errorResponse
-
     const body = await req.json()
     const projectId   = Number(body.projectId)
     const backlogRows = (body.backlogRows || []) as Record<string, any>[]
@@ -70,6 +67,9 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     const obsRows     = (body.obsRows     || []) as Record<string, any>[]
 
     if (!projectId) return NextResponse.json({ error: 'projectId es requerido' }, { status: 400 })
+
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'backlog:create', projectId)
+    if (errorResponse) return errorResponse
 
     const errors: string[] = []
     const results = { sprints: 0, bCreated: 0, bUpdated: 0, oCreated: 0, oUpdated: 0 }

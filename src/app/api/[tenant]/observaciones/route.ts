@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, guardProjectRoute, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -36,13 +36,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { ctx, errorResponse } = await guardRoute(req, 'observacion:create')
-    if (errorResponse) return errorResponse
-
     let body: Record<string, unknown> = {}
     try { body = await req.json() } catch {
       return NextResponse.json({ error: 'Body inválido' }, { status: 400 })
     }
+
+    const { ctx, errorResponse } = await guardProjectRoute(req, 'observacion:create', Number(body.projectId) || null)
+    if (errorResponse) return errorResponse
 
     const result = await callProcedureOut(
       'sp_observacion_create',
