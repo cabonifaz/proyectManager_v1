@@ -77,9 +77,13 @@ interface ProjectRoleRow extends RowDataPacket { role: Role }
 
 /** Rol que tiene el usuario dentro de un proyecto especifico (asignado via "Asignar" en Usuarios), o null si no tiene uno. */
 export async function getProjectRole(tenantId: number, projectId: number, userId: number): Promise<Role | null> {
+  // project_members no tiene columna tenant_id propia; se valida el tenant via projects.tenant_id
   const rows = await query<ProjectRoleRow>(
-    `SELECT role FROM project_members WHERE tenant_id = ? AND project_id = ? AND user_id = ? AND deleted_at IS NULL LIMIT 1`,
-    [tenantId, projectId, userId],
+    `SELECT pm.role FROM project_members pm
+     INNER JOIN projects p ON p.id = pm.project_id
+     WHERE pm.project_id = ? AND pm.user_id = ? AND p.tenant_id = ? AND pm.deleted_at IS NULL
+     LIMIT 1`,
+    [projectId, userId, tenantId],
   )
   return rows[0]?.role ?? null
 }

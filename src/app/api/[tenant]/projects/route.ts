@@ -25,9 +25,13 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
     // Rol asignado por proyecto (via "Asignar" en Usuarios), para que el cliente pueda
     // elevar permisos donde corresponda sin tener que consultarlo proyecto por proyecto.
+    // project_members no tiene tenant_id propio; se valida el tenant via projects.tenant_id.
     const memberRoles: any = await query(
-      `SELECT project_id, role FROM project_members WHERE tenant_id = ? AND user_id = ? AND deleted_at IS NULL`,
-      [ctx.tenantId, ctx.userId],
+      `SELECT pm.project_id, pm.role
+       FROM project_members pm
+       INNER JOIN projects p ON p.id = pm.project_id
+       WHERE pm.user_id = ? AND p.tenant_id = ? AND pm.deleted_at IS NULL`,
+      [ctx.userId, ctx.tenantId],
     )
     const roleByProject = new Map(memberRoles.map((r: any) => [r.project_id, r.role]))
     const data = (results[0] ?? []).map((p: any) => ({ ...p, member_role: roleByProject.get(p.id) ?? null }))
