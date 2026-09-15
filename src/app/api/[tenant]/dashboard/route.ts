@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, handleApiError } from '@/lib/session'
+import { guardRoute, resolveProjectTenantId, isProjectMember, handleApiError } from '@/lib/session'
 import { callProcedure, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -12,9 +12,22 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     const userId    = ctx.role === 'super_admin' ? null : ctx.userId
     const pid       = projectId ? Number(projectId) : null
 
+    // Vista de un solo proyecto: se usa su tenant REAL (por si fue migrado) y se valida
+    // membresia aparte. Vista agregada (sin proyecto): se queda tal cual, scopeada al tenant
+    // propio — agregar entre tenants distintos no tiene sentido para un resumen de portafolio.
+    let dashboardTenantId = ctx.tenantId
+    if (pid) {
+      const resolved = await resolveProjectTenantId(pid)
+      if (!resolved) return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+      if (!(await isProjectMember(ctx, pid))) {
+        return NextResponse.json({ error: 'No tienes acceso a este proyecto' }, { status: 403 })
+      }
+      dashboardTenantId = resolved
+    }
+
     const results = await callProcedure<RowDataPacket>(
       'CALL sp_dashboard_project(?, ?, ?)',
-      [ctx.tenantId, pid, userId],
+      [dashboardTenantId, pid, userId],
     )
 
     // Stats de observaciones por estado + ETA
@@ -30,8 +43,9 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
          SUM((eta > DATE_ADD(CURDATE(), INTERVAL 7 DAY) OR eta IS NULL)
              AND estado NOT IN ('resuelta','cerrada'))                                  AS a_tiempo
        FROM observaciones
-       WHERE tenant_id = ? AND deleted_at IS NULL AND (? IS NULL OR project_id = ?)`,
-      [ctx.tenantId, pid, pid],
+       WHERE deleted_at IS NULL
+         AND ((? IS NOT NULL AND project_id = ?) OR (? IS NULL AND tenant_id = ?))`,
+      [pid, pid, pid, ctx.tenantId],
     )
 
     // Desarrolladores en observaciones vencidas (Lógica Relacional Actualizada)
@@ -40,20 +54,19 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
        FROM observacion_asignaciones oa
        INNER JOIN observaciones o ON o.id = oa.observacion_id
        INNER JOIN users u ON u.id = oa.user_id
-       WHERE oa.tenant_id  = ?
-         AND o.eta         < CURDATE()
+       WHERE o.eta         < CURDATE()
          AND o.estado      NOT IN ('resuelta','cerrada')
          AND o.deleted_at  IS NULL
          AND u.deleted_at  IS NULL
-         AND (? IS NULL OR o.project_id = ?)
+         AND ((? IS NOT NULL AND o.project_id = ?) OR (? IS NULL AND oa.tenant_id = ?))
        GROUP BY u.name
        ORDER BY total DESC`,
-      [ctx.tenantId, pid, pid],
+      [pid, pid, pid, ctx.tenantId],
     )
 
     // Estadísticas por desarrollador (100% Relacional, sin legacy)
     const rawDevItems = await query<RowDataPacket>(
-      `SELECT 
+      `SELECT
          bi.id,
          bi.status,
          bi.progress,
@@ -62,18 +75,17 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
             SELECT JSON_ARRAYAGG(u.name)
             FROM sprint_item_tech_users situ
             INNER JOIN users u ON u.id = situ.user_id
-            WHERE situ.backlog_item_id = bi.id 
-              AND situ.column_id = c.id 
+            WHERE situ.backlog_item_id = bi.id
+              AND situ.column_id = c.id
               AND situ.deleted_at IS NULL
          ) AS assigned_users
        FROM project_columns c
        INNER JOIN backlog_items bi ON bi.project_id = c.project_id
        INNER JOIN projects p ON p.id = bi.project_id
-       WHERE p.tenant_id = ?
-         AND c.active = 1 AND c.deleted_at IS NULL
+       WHERE c.active = 1 AND c.deleted_at IS NULL
          AND bi.deleted_at IS NULL
-         AND (? IS NULL OR bi.project_id = ?)`,
-      [ctx.tenantId, pid, pid]
+         AND ((? IS NOT NULL AND bi.project_id = ?) OR (? IS NULL AND p.tenant_id = ?))`,
+      [pid, pid, pid, ctx.tenantId]
     )
 
     // Agrupamos los datos en memoria

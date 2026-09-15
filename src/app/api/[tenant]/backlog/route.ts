@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic' // 🚀 ESTA LÍNEA ELIMINA LA CACHÉ
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, guardProjectRoute, handleApiError } from '@/lib/session'
+import { guardRoute, guardProjectRoute, resolveProjectTenantId, isProjectMember, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 import { getServerSession } from 'next-auth'
@@ -22,6 +22,14 @@ export async function GET(req: NextRequest) {
     const projectId = searchParams.get('projectId')
     if (!projectId) return NextResponse.json({ error: 'projectId requerido' }, { status: 400 })
 
+    // El proyecto puede haber sido migrado a otro tenant: se usa su tenant REAL (no el de la
+    // sesion) para que sus miembros originales sigan viendo sus datos sin interrupcion.
+    const projectTenantId = await resolveProjectTenantId(Number(projectId))
+    if (!projectTenantId) return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+    if (!(await isProjectMember(ctx, Number(projectId)))) {
+      return NextResponse.json({ error: 'No tienes acceso a este proyecto' }, { status: 403 })
+    }
+
     const statusList   = searchParams.getAll('status[]')
     const singleStatus = searchParams.get('status') ?? null
     const sprintNum    = searchParams.get('sprintNum') ? Number(searchParams.get('sprintNum')) : null
@@ -36,7 +44,7 @@ export async function GET(req: NextRequest) {
       for (const status of statusList) {
         const results = await callProcedure<RowDataPacket>(
           'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
-          [ctx.tenantId, Number(projectId), status, sprintNum, search, limit, offset, pUserId],
+          [projectTenantId, Number(projectId), status, sprintNum, search, limit, offset, pUserId],
         )
         rawItems.push(...(results[0] ?? []))
       }
@@ -45,7 +53,7 @@ export async function GET(req: NextRequest) {
       const results = await callProcedure<RowDataPacket>(
         'CALL sp_backlog_list(?, ?, ?, ?, ?, ?, ?, ?)',
         [
-          ctx.tenantId,
+          projectTenantId,
           Number(projectId),
           statusList.length === 1 ? statusList[0] : singleStatus,
           sprintNum,
@@ -146,10 +154,13 @@ export async function POST(req: NextRequest) {
     const { ctx, errorResponse } = await guardProjectRoute(req, 'backlog:create', Number(body.projectId) || null)
     if (errorResponse) return errorResponse
 
+    // El proyecto puede pertenecer a otro tenant si fue migrado; se usa su tenant real.
+    const projectTenantId = await resolveProjectTenantId(Number(body.projectId)) ?? ctx.tenantId
+
     const result = await callProcedureOut(
       'sp_backlog_create',
       {
-        p_tenant_id:   ctx.tenantId,
+        p_tenant_id:   projectTenantId,
         p_project_id:  body.projectId,
         p_code:        body.code,
         p_module:      body.module      ?? null,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { guardRoute, getContextFromHeaders, requireProjectPermission, resolveProjectTenantId, isProjectMember, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut, query } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -12,10 +12,18 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     const projectId = searchParams.get('projectId')
     if (!projectId) return NextResponse.json({ error: 'projectId requerido' }, { status: 400 })
 
+    // sp_sprint_items_list no valida membresia por si sola: se verifica aca, y se usa el
+    // tenant REAL del proyecto (no el de la sesion) para que siga funcionando si fue migrado.
+    const projectTenantId = await resolveProjectTenantId(Number(projectId))
+    if (!projectTenantId) return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+    if (!(await isProjectMember(ctx, Number(projectId)))) {
+      return NextResponse.json({ error: 'No tienes acceso a este proyecto' }, { status: 403 })
+    }
+
     const results = await callProcedure<RowDataPacket>(
       'CALL sp_sprint_items_list(?, ?, ?, ?, ?, ?, ?, ?)',
       [
-        ctx.tenantId,
+        projectTenantId,
         Number(projectId),
         Number(params.id),
         searchParams.get('status')   ?? null,
@@ -43,11 +51,13 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     const permError = await requireProjectPermission(ctx, 'sprint_item:create', sprintRows[0].project_id)
     if (permError) return permError
 
+    const projectTenantId = await resolveProjectTenantId(sprintRows[0].project_id) ?? ctx.tenantId
+
     const body   = await req.json()
     const result = await callProcedureOut(
       'sp_sprint_item_create',
       {
-        p_tenant_id:       ctx.tenantId,
+        p_tenant_id:       projectTenantId,
         p_sprint_id:       Number(params.id),
         p_backlog_item_id: body.backlogItemId ?? null,
         p_code:            body.code,

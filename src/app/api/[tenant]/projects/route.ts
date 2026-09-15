@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
-import { callProcedure, callProcedureOut, query } from '@/lib/db' // <-- Importamos callProcedureOut
+import { callProcedure, callProcedureOut, query, execute } from '@/lib/db' // <-- Importamos callProcedureOut
+import { saveLogo } from '@/lib/uploadLogo'
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
 import { RowDataPacket } from 'mysql2/promise'
 
 export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
@@ -73,8 +76,35 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
       return NextResponse.json({ error: result.p_error }, { status: 400 })
     }
 
+    const newProjectId = result.p_result_id
+
+    // Logo/color: se guardan aparte del procedure (mismo patron que el branding de tenants)
+    if (body.logoDataUrl || body.colorHex !== undefined) {
+      const fields: string[] = []
+      const values: unknown[] = []
+
+      if (body.colorHex !== undefined) {
+        const colorHex = body.colorHex === null ? null : String(body.colorHex)
+        if (colorHex !== null && !HEX_RE.test(colorHex)) {
+          return NextResponse.json({ error: 'El color debe ser un hex válido (#rrggbb)' }, { status: 400 })
+        }
+        fields.push('color_hex = ?'); values.push(colorHex)
+      }
+
+      if (body.logoDataUrl) {
+        const logoResult = await saveLogo('projects', body.code || `p${newProjectId}`, body.logoDataUrl)
+        if (logoResult.error) return NextResponse.json({ error: logoResult.error }, { status: 400 })
+        fields.push('logo_url = ?'); values.push(logoResult.url)
+      }
+
+      if (fields.length > 0) {
+        values.push(newProjectId)
+        await execute(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`, values)
+      }
+    }
+
     // Devolvemos el ID atrapado correctamente
-    return NextResponse.json({ id: result.p_result_id }, { status: 201 })
+    return NextResponse.json({ id: newProjectId }, { status: 201 })
   } catch (err) {
     return handleApiError(err)
   }

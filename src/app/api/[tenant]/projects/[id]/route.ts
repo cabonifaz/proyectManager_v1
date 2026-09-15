@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
-import { callProcedure, callProcedureOut, query } from '@/lib/db'
+import { callProcedure, callProcedureOut, query, execute } from '@/lib/db'
+import { saveLogo, deleteOldLogo } from '@/lib/uploadLogo'
 import { RowDataPacket } from 'mysql2/promise'
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
 
 async function checkProjectAccess(tenantId: number, projectId: number, userId: number, role: string): Promise<boolean> {
   if (role === 'super_admin') return true
@@ -80,6 +83,34 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
     )
 
     if (result.p_error) return NextResponse.json({ error: result.p_error }, { status: 400 })
+
+    // Logo/color: se guardan aparte del procedure (mismo patron que el branding de tenants)
+    if (body.logoDataUrl || body.colorHex !== undefined) {
+      const fields: string[] = []
+      const values: unknown[] = []
+
+      if (body.colorHex !== undefined) {
+        const colorHex = body.colorHex === null ? null : String(body.colorHex)
+        if (colorHex !== null && !HEX_RE.test(colorHex)) {
+          return NextResponse.json({ error: 'El color debe ser un hex válido (#rrggbb)' }, { status: 400 })
+        }
+        fields.push('color_hex = ?'); values.push(colorHex)
+      }
+
+      if (body.logoDataUrl) {
+        const current: any = await query(`SELECT code, logo_url FROM projects WHERE id = ? LIMIT 1`, [Number(params.id)])
+        const logoResult = await saveLogo('projects', current[0]?.code || `p${params.id}`, body.logoDataUrl)
+        if (logoResult.error) return NextResponse.json({ error: logoResult.error }, { status: 400 })
+        await deleteOldLogo('projects', current[0]?.logo_url)
+        fields.push('logo_url = ?'); values.push(logoResult.url)
+      }
+
+      if (fields.length > 0) {
+        values.push(Number(params.id))
+        await execute(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`, values)
+      }
+    }
+
     return NextResponse.json({ ok: true })
   } catch (err) {
     return handleApiError(err)

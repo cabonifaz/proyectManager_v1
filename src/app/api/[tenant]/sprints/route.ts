@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { guardRoute, guardProjectRoute, handleApiError } from '@/lib/session'
+import { guardRoute, guardProjectRoute, resolveProjectTenantId, isProjectMember, handleApiError } from '@/lib/session'
 import { callProcedure, callProcedureOut } from '@/lib/db'
 import { RowDataPacket } from 'mysql2/promise'
 
@@ -11,9 +11,17 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
     const projectId = req.nextUrl.searchParams.get('projectId')
     if (!projectId) return NextResponse.json({ error: 'projectId requerido' }, { status: 400 })
 
+    // sp_sprint_list no valida membresia por si sola: se verifica aca, y se usa el tenant
+    // REAL del proyecto (no el de la sesion) para que siga funcionando si fue migrado.
+    const projectTenantId = await resolveProjectTenantId(Number(projectId))
+    if (!projectTenantId) return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+    if (!(await isProjectMember(ctx, Number(projectId)))) {
+      return NextResponse.json({ error: 'No tienes acceso a este proyecto' }, { status: 403 })
+    }
+
     const results = await callProcedure<RowDataPacket>(
       'CALL sp_sprint_list(?, ?)',
-      [ctx.tenantId, Number(projectId)],
+      [projectTenantId, Number(projectId)],
     )
 
     return NextResponse.json({ data: results[0] ?? [] })

@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { guardRoute, handleApiError } from '@/lib/session'
 import { query, execute } from '@/lib/db'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { saveLogo, deleteOldLogo } from '@/lib/uploadLogo'
 
 const RESERVED_SLUGS = ['admin', 'api', 'login', '_next', 'favicon.ico', 'public']
 // Case-insensitive: tenants ya existentes en producción tienen el slug con mayúsculas
 // (ej. "Fractal"), y forzar minúsculas al editar les cambiaría la URL y rompería su acceso.
 const SLUG_RE = /^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$/
 const HEX_RE = /^#[0-9a-fA-F]{6}$/
-const MAX_LOGO_BYTES = 2 * 1024 * 1024
-const MIME_EXT: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/svg+xml': 'svg',
-}
 
 function validateSlug(slug: string): string | null {
   if (!slug || !SLUG_RE.test(slug)) {
@@ -25,36 +17,6 @@ function validateSlug(slug: string): string | null {
     return `"${slug}" es una palabra reservada, elige otro identificador`
   }
   return null
-}
-
-async function saveLogo(slug: string, dataUrl: string): Promise<{ url?: string; error?: string }> {
-  const match = /^data:(image\/(?:png|jpeg|webp|svg\+xml));base64,(.+)$/.exec(dataUrl)
-  if (!match) return { error: 'Formato de imagen no soportado (usa PNG, JPG, WEBP o SVG)' }
-
-  const [, mime, base64] = match
-  const ext = MIME_EXT[mime]
-  const buffer = Buffer.from(base64, 'base64')
-
-  if (buffer.byteLength > MAX_LOGO_BYTES) {
-    return { error: 'El logo no puede superar 2MB' }
-  }
-
-  const dir = path.join(process.cwd(), 'public', 'uploads', 'tenants')
-  await fs.mkdir(dir, { recursive: true })
-
-  const filename = `${slug}-${Date.now()}.${ext}`
-  await fs.writeFile(path.join(dir, filename), buffer)
-
-  return { url: `/uploads/tenants/${filename}` }
-}
-
-async function deleteOldLogo(oldUrl: string | null | undefined) {
-  if (!oldUrl || !oldUrl.startsWith('/uploads/tenants/')) return
-  try {
-    await fs.unlink(path.join(process.cwd(), 'public', oldUrl))
-  } catch {
-    // best-effort: si no existe o falla el borrado, seguimos sin romper la actualización
-  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
@@ -113,9 +75,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     if (body.logoDataUrl) {
-      const result = await saveLogo(nextSlug, body.logoDataUrl)
+      const result = await saveLogo('tenants', nextSlug, body.logoDataUrl)
       if (result.error) return NextResponse.json({ error: result.error }, { status: 400 })
-      await deleteOldLogo(current[0].logo_url)
+      await deleteOldLogo('tenants', current[0].logo_url)
       fields.push('logo_url = ?'); values.push(result.url)
     }
 

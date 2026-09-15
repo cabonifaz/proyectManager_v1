@@ -75,15 +75,18 @@ export async function guardRoute(
 
 interface ProjectRoleRow extends RowDataPacket { role: Role }
 
-/** Rol que tiene el usuario dentro de un proyecto especifico (asignado via "Asignar" en Usuarios), o null si no tiene uno. */
-export async function getProjectRole(tenantId: number, projectId: number, userId: number): Promise<Role | null> {
-  // project_members no tiene columna tenant_id propia; se valida el tenant via projects.tenant_id
+/**
+ * Rol que tiene el usuario dentro de un proyecto especifico (asignado via "Asignar" en Usuarios),
+ * o null si no tiene uno. Deliberadamente NO valida tenant: project_members es la autoridad de
+ * acceso portable entre tenants (un proyecto migrado no debe perder a sus miembros originales).
+ */
+export async function getProjectRole(projectId: number, userId: number): Promise<Role | null> {
   const rows = await query<ProjectRoleRow>(
     `SELECT pm.role FROM project_members pm
-     INNER JOIN projects p ON p.id = pm.project_id
-     WHERE pm.project_id = ? AND pm.user_id = ? AND p.tenant_id = ? AND pm.deleted_at IS NULL
+     INNER JOIN projects p ON p.id = pm.project_id AND p.deleted_at IS NULL
+     WHERE pm.project_id = ? AND pm.user_id = ? AND pm.deleted_at IS NULL
      LIMIT 1`,
-    [projectId, userId, tenantId],
+    [projectId, userId],
   )
   return rows[0]?.role ?? null
 }
@@ -95,7 +98,7 @@ export async function getProjectRole(tenantId: number, projectId: number, userId
  */
 export async function getEffectiveRole(ctx: RequestContext, projectId: number | null): Promise<Role> {
   if (!projectId || ctx.role === 'super_admin') return ctx.role
-  const projectRole = await getProjectRole(ctx.tenantId, projectId, ctx.userId)
+  const projectRole = await getProjectRole(projectId, ctx.userId)
   return projectRole ? higherRole(ctx.role, projectRole) : ctx.role
 }
 
@@ -127,6 +130,23 @@ export async function guardProjectRoute(
   if (errorResponse) return { ctx: null, errorResponse }
 
   return { ctx, errorResponse: null }
+}
+
+interface TenantIdOnlyRow extends RowDataPacket { tenant_id: number }
+
+/** Tenant REAL y actual de un proyecto (puede diferir del tenant de la sesion si el proyecto fue migrado). */
+export async function resolveProjectTenantId(projectId: number): Promise<number | null> {
+  const rows = await query<TenantIdOnlyRow>(
+    `SELECT tenant_id FROM projects WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+    [projectId],
+  )
+  return rows[0]?.tenant_id ?? null
+}
+
+/** true si el usuario es super_admin o tiene una fila en project_members para ese proyecto (sin importar tenant). */
+export async function isProjectMember(ctx: RequestContext, projectId: number): Promise<boolean> {
+  if (ctx.role === 'super_admin') return true
+  return (await getProjectRole(projectId, ctx.userId)) !== null
 }
 
 export async function guardRouteAll(

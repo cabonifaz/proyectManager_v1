@@ -23,6 +23,10 @@ interface Project {
   member_role: Role | null
   obs_total: number
   obs_completadas: number
+  tenant_name: string | null
+  tenant_slug: string | null
+  logo_url: string | null
+  color_hex: string | null
 }
 
 interface User {
@@ -78,6 +82,7 @@ export function ProjectsClient({ tenant, role, userId }: {
 
   // 🚀 ESTADO NUEVO: Control del Modal de Miembros
   const [membersModalProject, setMembersModalProject] = useState<Project | null>(null)
+  const [migrateProject, setMigrateProject] = useState<Project | null>(null)
 
   const isSuperAdmin = role === 'super_admin'
   const isGestor     = role === 'gestor_proyecto'
@@ -228,6 +233,8 @@ export function ProjectsClient({ tenant, role, userId }: {
               onOpenMembers={() => setMembersModalProject(p)} // 🚀 Abrir modal
               onEdit={() => { setEditItem(p); setShowForm(true) }}
               onDelete={() => handleDelete(p.id)}
+              onMigrate={isSuperAdmin ? () => setMigrateProject(p) : undefined}
+              ownTenant={tenant}
             />
           ))}
         </div>
@@ -252,7 +259,21 @@ export function ProjectsClient({ tenant, role, userId }: {
               {filtered.map(p => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-2 font-mono text-xs text-gray-500">{p.code}</td>
-                  <td className="px-4 py-2 font-medium">{p.name}</td>
+                  <td className="px-4 py-2 font-medium">
+                    <div className="flex items-center gap-2">
+                      {p.logo_url ? (
+                        <img src={p.logo_url} alt="" className="w-5 h-5 rounded object-contain border border-gray-100 shrink-0" />
+                      ) : p.color_hex ? (
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color_hex }} />
+                      ) : null}
+                      <span>{p.name}</span>
+                      {p.tenant_slug && (isSuperAdmin || p.tenant_slug !== tenant) && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded shrink-0">
+                          {p.tenant_name ?? p.tenant_slug}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${METHODOLOGY_COLORS[p.methodology] ?? METHODOLOGY_COLORS['scrum']}`}>
                       {METHODOLOGY_LABELS[p.methodology] ?? 'Scrum'}
@@ -299,6 +320,9 @@ export function ProjectsClient({ tenant, role, userId }: {
                           <button onClick={() => { setEditItem(p); setShowForm(true) }} className="text-xs text-gray-600 hover:underline">Editar</button>
                         </>
                       )}
+                      {isSuperAdmin && (
+                        <button onClick={() => setMigrateProject(p)} className="text-xs text-purple-600 hover:underline whitespace-nowrap">Mover a otra empresa</button>
+                      )}
                       {canDelete && (
                         <button onClick={() => handleDelete(p.id)} className="text-xs text-red-500 hover:underline">Eliminar</button>
                       )}
@@ -328,37 +352,137 @@ export function ProjectsClient({ tenant, role, userId }: {
           onClose={() => setMembersModalProject(null)}
         />
       )}
+
+      {migrateProject && (
+        <MigrateTenantModal
+          project={migrateProject}
+          onClose={() => setMigrateProject(null)}
+          onSaved={() => { setMigrateProject(null); fetchProjects() }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Modal: mover proyecto a otra empresa ────────────────────────────────────
+function MigrateTenantModal({ project, onClose, onSaved }: {
+  project: Project; onClose: () => void; onSaved: () => void
+}) {
+  const [tenants, setTenants] = useState<{ id: number; name: string; slug: string }[]>([])
+  const [tenantId, setTenantId] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/admin/tenants')
+      .then(res => res.json())
+      .then(json => setTenants((json.data ?? []).filter((t: any) => t.slug !== project.tenant_slug)))
+      .catch(() => setError('No se pudo cargar la lista de empresas'))
+      .finally(() => setLoading(false))
+  }, [project.tenant_slug])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!tenantId) return
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/admin/projects/${project.id}/migrate-tenant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId: Number(tenantId) }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(json.error ?? 'Error al mover el proyecto'); setSaving(false); return }
+      onSaved()
+    } catch (e) {
+      setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+          <h2 className="text-lg font-bold text-gray-800">Mover a otra empresa</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-gray-600 mb-4">
+            <strong>{project.name}</strong> pasará a pertenecer a la empresa que elijas. Los usuarios ya asignados a este proyecto conservan su acceso, aunque sean de la empresa {project.tenant_name ?? 'actual'}.
+          </p>
+          {error && <div className="mb-4 p-3 bg-red-50 border-l-4 border-red-500 text-red-700 rounded text-sm font-medium">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <select
+              required
+              disabled={loading}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              value={tenantId}
+              onChange={e => setTenantId(e.target.value)}
+            >
+              <option value="">{loading ? 'Cargando empresas...' : 'Selecciona una empresa...'}</option>
+              {tenants.map(t => <option key={t.id} value={t.id}>{t.name} ({t.slug})</option>)}
+            </select>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-lg hover:bg-gray-200 transition-colors">Cancelar</button>
+              <button type="submit" disabled={saving || !tenantId} className="px-5 py-2 text-sm font-bold text-white bg-purple-600 rounded-lg shadow hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                {saving ? 'Moviendo...' : 'Mover proyecto'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── Componente Tarjeta ────────────────────────────────────────────────────────
-function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, onOpenMembers, onEdit, onDelete }: {
+function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, onOpenMembers, onEdit, onDelete, onMigrate, ownTenant }: {
   project: Project
   canEdit: boolean
   canDelete: boolean
-  onGoToBoard: () => void 
+  onGoToBoard: () => void
   onGoToObs: () => void
   onOpenMembers: () => void
   onEdit: () => void
   onDelete: () => void
+  onMigrate?: () => void
+  ownTenant: string
 }) {
   return (
     <div className="bg-white rounded-lg shadow p-5 flex flex-col gap-3 hover:shadow-md transition-shadow relative overflow-hidden">
-      <div className={`absolute top-0 left-0 w-1 h-full ${p.methodology === 'scrum' ? 'bg-blue-400' : p.methodology === 'waterfall' ? 'bg-indigo-400' : 'bg-purple-400'}`}></div>
+      {p.color_hex ? (
+        <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: p.color_hex }}></div>
+      ) : (
+        <div className={`absolute top-0 left-0 w-1 h-full ${p.methodology === 'scrum' ? 'bg-blue-400' : p.methodology === 'waterfall' ? 'bg-indigo-400' : 'bg-purple-400'}`}></div>
+      )}
 
       <div className="flex items-start justify-between pl-2">
-        <div>
-          <span className="text-xs font-mono text-gray-400 block mb-0.5">{p.code}</span>
-          <h2 className="font-semibold text-gray-800 leading-tight">{p.name}</h2>
-          
-          <div className="flex gap-2 mt-2">
-            <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${METHODOLOGY_COLORS[p.methodology] ?? METHODOLOGY_COLORS['scrum']}`}>
-              {METHODOLOGY_LABELS[p.methodology] ?? 'Scrum'}
-            </span>
-            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${STATUS_COLORS[p.status] ?? ''}`}>
-              {p.status}
-            </span>
+        <div className="flex items-start gap-2.5 min-w-0">
+          {p.logo_url && (
+            <img src={p.logo_url} alt="" className="w-9 h-9 rounded object-contain border border-gray-100 shrink-0 mt-0.5" />
+          )}
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-xs font-mono text-gray-400">{p.code}</span>
+              {p.tenant_slug && (p.tenant_slug !== ownTenant) && (
+                <span className="text-[9px] font-bold uppercase tracking-wider bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded" title="Este proyecto pertenece a otra empresa">
+                  {p.tenant_name ?? p.tenant_slug}
+                </span>
+              )}
+            </div>
+            <h2 className="font-semibold text-gray-800 leading-tight">{p.name}</h2>
+
+            <div className="flex gap-2 mt-2">
+              <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${METHODOLOGY_COLORS[p.methodology] ?? METHODOLOGY_COLORS['scrum']}`}>
+                {METHODOLOGY_LABELS[p.methodology] ?? 'Scrum'}
+              </span>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${STATUS_COLORS[p.status] ?? ''}`}>
+                {p.status}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -437,6 +561,9 @@ function ProjectCard({ project: p, canEdit, canDelete, onGoToBoard, onGoToObs, o
             <button onClick={onEdit} className="text-xs text-gray-500 hover:text-gray-800 transition-colors font-medium">Editar</button>
           </>
         )}
+        {onMigrate && (
+          <button onClick={onMigrate} className="text-xs text-purple-500 hover:text-purple-700 transition-colors font-medium">Mover</button>
+        )}
         {canDelete && (
           <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600 transition-colors font-medium ml-auto">Eliminar</button>
         )}
@@ -458,9 +585,24 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
     methodology: item?.methodology ?? 'scrum',
     start_date:  item?.start_date  ? item.start_date.toString().slice(0, 10) : '',
     end_date:    item?.end_date    ? item.end_date.toString().slice(0, 10)   : '',
+    colorHex:    item?.color_hex   ?? '#2563eb',
   })
+  const [logoPreview, setLogoPreview] = useState<string | null>(item?.logo_url ?? null)
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      setLogoPreview(result)
+      setLogoDataUrl(result)
+    }
+    reader.readAsDataURL(file)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -470,18 +612,22 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
       const url    = item ? `/api/${tenant}/projects/${item.id}` : `/api/${tenant}/projects`
       const method = item ? 'PATCH' : 'POST'
 
+      const body: Record<string, unknown> = {
+        code:        form.code,
+        name:        form.name,
+        description: form.description || null,
+        status:      form.status,
+        methodology: form.methodology,
+        startDate:   form.start_date  || null,
+        endDate:     form.end_date    || null,
+        colorHex:    form.colorHex,
+      }
+      if (logoDataUrl) body.logoDataUrl = logoDataUrl
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code:        form.code,
-          name:        form.name,
-          description: form.description || null,
-          status:      form.status,
-          methodology: form.methodology,
-          startDate:   form.start_date  || null,
-          endDate:     form.end_date    || null,
-        }),
+        body: JSON.stringify(body),
       })
 
       const json = await res.json()
@@ -602,6 +748,32 @@ function ProjectForm({ tenant, item, onClose, onSaved }: {
                   value={form.end_date}
                   onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Logo / ícono</label>
+                <div className="flex items-center gap-2">
+                  {logoPreview && <img src={logoPreview} alt="Logo" className="w-9 h-9 rounded object-contain border shrink-0" />}
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleLogoChange} className="text-xs w-full" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.colorHex}
+                    onChange={e => setForm(f => ({ ...f, colorHex: e.target.value }))}
+                    className="w-9 h-9 rounded border cursor-pointer shrink-0"
+                  />
+                  <input
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={form.colorHex}
+                    onChange={e => setForm(f => ({ ...f, colorHex: e.target.value }))}
+                  />
+                </div>
               </div>
             </div>
 
