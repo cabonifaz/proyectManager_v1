@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 export interface RowActionItem {
@@ -16,14 +16,33 @@ export interface RowActionItem {
  */
 export function RowActionsMenu({ trigger, items }: { trigger: React.ReactNode; items: RowActionItem[] }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   function openMenu() {
     const rect = triggerRef.current?.getBoundingClientRect()
     if (rect) setPos({ top: rect.bottom + 4, left: rect.left })
     setOpen(true)
   }
+
+  // Si el menú (ya con su tamaño real) se saldría por abajo del viewport —típicamente el
+  // último ticket/item de la tabla, pegado al borde inferior— se abre hacia arriba en vez
+  // de hacia abajo, para que nunca quede oculto bajo el borde de la pantalla.
+  useLayoutEffect(() => {
+    if (!open) return
+    const menuRect = menuRef.current?.getBoundingClientRect()
+    const triggerRect = triggerRef.current?.getBoundingClientRect()
+    if (!menuRect || !triggerRect) return
+
+    if (menuRect.bottom > window.innerHeight - 8) {
+      setPos((prev) => (prev && prev.bottom !== undefined ? prev : {
+        bottom: window.innerHeight - triggerRect.top + 4,
+        left: triggerRect.left,
+      }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   // Si la tabla se desplaza (scroll horizontal/vertical) o cambia el tamaño de ventana,
   // la posición calculada queda desactualizada: se cierra el menú en vez de dejarlo flotando mal ubicado.
@@ -59,12 +78,13 @@ export function RowActionsMenu({ trigger, items }: { trigger: React.ReactNode; i
         </svg>
       </button>
 
-      {open && createPortal(
+      {open && pos && createPortal(
         <>
           <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)} />
           <div
+            ref={menuRef}
             className="fixed z-[101] bg-white border border-gray-200 rounded-lg shadow-xl p-1.5 min-w-[160px] flex flex-col gap-1"
-            style={{ top: pos.top, left: pos.left }}
+            style={{ top: pos.top, bottom: pos.bottom, left: pos.left }}
           >
             {items.map((item, idx) => (
               <button
