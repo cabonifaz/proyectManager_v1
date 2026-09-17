@@ -230,7 +230,8 @@ export function ObservacionesClient({ projects, tenant, role, initialProjectId }
   const [fetchError, setFetchError]     = useState('')
 const [search, setSearch]             = useState('')
   // 🚀 Arreglos para almacenar múltiples selecciones simultáneas ([] significa mostrar todos)
-  const [estadoFilters, setEstadoFilters] = useState<string[]>([]) 
+  // Por defecto no se listan las "Resueltas"; se pueden ver de nuevo activando ese filtro o "Todo".
+  const [estadoFilters, setEstadoFilters] = useState<string[]>(['abierta', 'asignado', 'en_seguimiento', 'cerrada'])
   const [tipoFilters, setTipoFilters]     = useState<string[]>([])
 
   // Opciones de configuración visual para las píldoras de filtrado
