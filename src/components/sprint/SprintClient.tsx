@@ -21,10 +21,8 @@ interface TechVal {
   assigned_users?: { id: number; name: string; role: string }[] | null 
 }
 interface SprintItem {
-  // id es el id de la fila sprint_items (la asignacion al sprint); backlog_item_id es el
-  // id real del ticket en backlog_items. Son secuencias independientes: para editar el
-  // ticket, sus columnas tecnicas o su checklist siempre hay que usar backlog_item_id.
-  id: number; backlog_item_id: number; code: string; module: string; description: string
+  // Esta pantalla lista tickets via sp_backlog_list (no sprint_items): id es backlog_items.id.
+  id: number; code: string; module: string; description: string
   progress: number; status: string; sprint_num: number | null
   eta: string | null; reg_date: string; comment: string
   tech_columns: TechVal[]
@@ -264,6 +262,27 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   }, [activeSprint, fetchObsLoad])
 
   useEffect(() => { fetchItems() }, [statusFilters])
+
+  // Quita un ticket del sprint (sprint_num = null); el backend reordena automaticamente
+  // las prioridades del resto de tickets que quedan en ese sprint.
+  async function handleRemoveFromSprint(item: SprintItem) {
+    if (!confirm(`¿Quitar ${item.code} del sprint? Su prioridad se reordenará automáticamente.`)) return
+    try {
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sprintNum: null }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        alert(json.error ?? 'No se pudo quitar el ticket del sprint')
+        return
+      }
+      fetchItems()
+    } catch {
+      alert('Error de conexión al quitar el ticket del sprint')
+    }
+  }
 
   // Sorting
   function handleSort(col: SortKey) {
@@ -546,6 +565,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                               ...(canEditItem ? [{ label: 'Editar', onClick: () => { setEditItem(item); setShowItemForm(true) } }] : []),
                               { label: 'Checklist', onClick: () => setChecklistExecOpen(item) },
                               ...(item.comment ? [{ label: 'Ver nota', onClick: () => setViewComment({ code: item.code, comment: item.comment }) }] : []),
+                              ...(canEditItem ? [{ label: 'Quitar del sprint', danger: true, onClick: () => handleRemoveFromSprint(item) }] : []),
                             ]}
                           />
                           {item.obs_count !== undefined && item.obs_count > 0 && (
@@ -741,9 +761,8 @@ function ReorderSprintItemsModal({ tenant, sprint, items, onClose }: { tenant: s
     setError('')
     
     // Armamos el payload con los IDs y sus nuevas prioridades
-    // sp_sprint_items_reordenar espera el id de backlog_items, no el de sprint_items
     const payload = localItems.map((item, idx) => ({
-      id: item.backlog_item_id,
+      id: item.id,
       prioridad: prioritySlots[idx]
     }))
 
@@ -900,7 +919,7 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
     setSaving(true)
     setError('')
     try {
-      const res = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}`, {
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -925,7 +944,7 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
           const selectedUserIds = techVals[col.col_key] || []
           
           // 🚀 CORRECCIÓN: Ahora el Sprint guarda directamente en la ruta universal del Backlog
-          const r = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}/tech`, {
+          const r = await fetch(`/api/${tenant}/backlog/${item.id}/tech`, {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ columnId: col.id, userIds: selectedUserIds }),
@@ -1270,12 +1289,12 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}/tasks`)
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
       const json = await res.json()
       setTasks(json.data ?? [])
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [tenant, item.backlog_item_id])
+  }, [tenant, item.id])
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
 
@@ -1293,7 +1312,7 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
     if (!desc.trim()) return
     setAdding(true)
     try {
-      const res = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}/tasks`, {
+      const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descripcion: desc, peso: Number(peso) || 0 })
       })

@@ -32,9 +32,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
 
     const permError = await requireProjectPermission(ctx, 'backlog:update', projectId)
     if (permError) return permError
-    const sprintNum = currentTicketInfo[0].sprint_num !== null 
-                        ? currentTicketInfo[0].sprint_num 
+    const sprintNum = currentTicketInfo[0].sprint_num !== null
+                        ? currentTicketInfo[0].sprint_num
                         : (body.sprintNum ?? 0);
+
+    const sprintNumExplicit = 'sprintNum' in body ? 1 : 0
 
     // A. Validar duplicados (Añadiendo project_id al WHERE)
     if (priorityNum > 0 && !isCompleted) {
@@ -58,22 +60,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       }
     }
 
-    // B. Efecto Cascada Sincronizado (Añadiendo project_id al WHERE)
-    if (body.status === 'completado' && currentTicketInfo[0].status !== 'completado') {
+    // B. Efecto Cascada Sincronizado: si el ticket sale de su cola de prioridad
+    // (se completa, o se saca/mueve de su sprint), se reordena automaticamente
+    // el resto de tickets de esa cola y se resetea la prioridad de este ticket.
+    const oldSprintNum     = currentTicketInfo[0].sprint_num;
+    const newSprintNum     = sprintNumExplicit === 1 ? body.sprintNum : oldSprintNum;
+    const becomesCompleted = body.status === 'completado' && currentTicketInfo[0].status !== 'completado';
+    const leavesSprint      = oldSprintNum !== null && newSprintNum !== oldSprintNum;
+
+    if (becomesCompleted || leavesSprint) {
         const oldPriority = currentTicketInfo[0].priority;
-        if (oldPriority > 0 && sprintNum !== null) {
+        if (oldPriority > 0 && oldSprintNum !== null) {
             await query(
-                `UPDATE backlog_items SET priority = priority - 1 
-                 WHERE project_id = ? AND sprint_num = ? AND priority > ? AND status != 'completado' AND deleted_at IS NULL`, 
-                [projectId, sprintNum, oldPriority]
+                `UPDATE backlog_items SET priority = priority - 1
+                 WHERE project_id = ? AND sprint_num = ? AND priority > ? AND status != 'completado' AND deleted_at IS NULL`,
+                [projectId, oldSprintNum, oldPriority]
             );
             await query(
-                `UPDATE sprint_items SET priority = priority - 1 
-                 WHERE project_id = ? AND sprint_num = ? AND priority > ? AND status != 'completado' AND deleted_at IS NULL`, 
-                [projectId, sprintNum, oldPriority]
+                `UPDATE sprint_items SET priority = priority - 1
+                 WHERE project_id = ? AND sprint_num = ? AND priority > ? AND status != 'completado' AND deleted_at IS NULL`,
+                [projectId, oldSprintNum, oldPriority]
             );
         }
-        body.priority = 0; 
+        body.priority = 0;
     }
     // ========================================================================
 
@@ -94,7 +103,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
         p_comment:      body.comment === null ? "" : (body.comment ?? null), 
         p_updated_by:   ctx.userId,
         p_eta_explicit: 'eta' in body ? 1 : 0,
-        p_priority:     body.priority    ?? 0, 
+        p_priority:     body.priority    ?? 0,
+        p_sprint_num_explicit: sprintNumExplicit,
       },
       ['p_error']
     )
