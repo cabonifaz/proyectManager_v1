@@ -45,15 +45,17 @@ export default async function SprintPage({ params }: { params: { tenant: string 
   )
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-6">Sprints</h1>
-      <SprintClient
-        projects={projects}
-        members={members}
-        tenant={params.tenant}
-        role={user.role as any}
-        userId={user.id}
-      />
+    <div className="h-full flex flex-col">
+      <h1 className="text-2xl font-semibold mb-6 shrink-0">Sprints</h1>
+      <div className="flex-1 min-h-0">
+        <SprintClient
+          projects={projects}
+          members={members}
+          tenant={params.tenant}
+          role={user.role as any}
+          userId={user.id}
+        />
+      </div>
     </div>
   )
 }

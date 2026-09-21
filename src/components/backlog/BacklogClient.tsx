@@ -311,7 +311,7 @@ const [sprintFilter, setSprint]         = useState('')
   const devLoadEntries = Object.entries(devLoad).sort((a, b) => b[1] - a[1])
 
   return (
-    <div className="space-y-4">
+    <div className="h-full flex flex-col gap-4 min-h-0">
       {/* Filtros */}
       <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
         {!compactFilters && (
@@ -443,9 +443,9 @@ const [sprintFilter, setSprint]         = useState('')
         </div>
       )}
 
-      {/* Tabla */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-scroll">
+      {/* Tabla: el scroll (vertical y horizontal) queda contenido aqui, no en toda la pantalla */}
+      <div className="bg-white rounded-lg shadow overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="overflow-auto flex-1 min-h-0">
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 border-b">
             <tr>

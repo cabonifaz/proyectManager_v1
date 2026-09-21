@@ -31,15 +31,17 @@ export default async function ObservacionesPage({
   const projectData = projects[0] || []
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-6">Observaciones</h1>
-      <ObservacionesClient
-        projects={projectData}
-        tenant={params.tenant}
-        role={session.user.role as any}
-        // 🚀 AÑADIDO: Pasamos la ID del proyecto desde la URL al componente cliente
-        initialProjectId={searchParams.projectId ? Number(searchParams.projectId) : undefined}
-      />
+    <div className="h-full flex flex-col">
+      <h1 className="text-2xl font-semibold mb-6 shrink-0">Observaciones</h1>
+      <div className="flex-1 min-h-0">
+        <ObservacionesClient
+          projects={projectData}
+          tenant={params.tenant}
+          role={session.user.role as any}
+          // 🚀 AÑADIDO: Pasamos la ID del proyecto desde la URL al componente cliente
+          initialProjectId={searchParams.projectId ? Number(searchParams.projectId) : undefined}
+        />
+      </div>
     </div>
   )
 }

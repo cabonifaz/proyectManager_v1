@@ -35,13 +35,15 @@ export default async function BacklogPage({ params }: { params: { tenant: string
   const projectData = projects[0] || []
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold mb-6">Backlog</h1>
-      <BacklogClient
-        projects={projectData}
-        tenant={params.tenant}
-        role={session.user.role as any}
-      />
+    <div className="h-full flex flex-col">
+      <h1 className="text-2xl font-semibold mb-6 shrink-0">Backlog</h1>
+      <div className="flex-1 min-h-0">
+        <BacklogClient
+          projects={projectData}
+          tenant={params.tenant}
+          role={session.user.role as any}
+        />
+      </div>
     </div>
   )
 }

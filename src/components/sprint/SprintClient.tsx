@@ -308,7 +308,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="h-full flex flex-col gap-4 min-h-0">
       <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
         <select
           className="border rounded px-3 py-1.5 text-sm"
@@ -489,8 +489,8 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
             </div>
           )}
 
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="overflow-x-scroll">
+          <div className="bg-white rounded-lg shadow overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="overflow-auto flex-1 min-h-0">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 border-b">
                 <tr>

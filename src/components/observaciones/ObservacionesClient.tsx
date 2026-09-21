@@ -543,7 +543,7 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
 
   // ── RENDER ────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
+    <div className="h-full flex flex-col gap-4 min-h-0">
       {/* Barra de filtros */}
       <div className="flex flex-wrap gap-3 items-center">
         <select
@@ -650,8 +650,8 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           {projectId ? 'No hay observaciones registradas.' : 'Selecciona un proyecto.'}
         </div>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="overflow-auto flex-1 min-h-0">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
              <tr>
