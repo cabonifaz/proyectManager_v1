@@ -507,7 +507,14 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
 
   function etaClass(eta: string | null, estado: Observacion['estado']) {
     if (!eta || estado === 'resuelta' || estado === 'cerrada') return 'text-gray-500'
-    const diff = new Date(eta).getTime() - Date.now()
+    // eta llega como "YYYY-MM-DD..."; parsear con new Date(string) la interpreta en UTC y,
+    // en zonas horarias detrás de UTC, se corre un día hacia atrás. Se arma la fecha local
+    // a partir de los mismos componentes que se muestran en pantalla.
+    const [y, m, d] = eta.toString().slice(0, 10).split('-').map(Number)
+    const etaDate = new Date(y, m - 1, d)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const diff = etaDate.getTime() - today.getTime()
     if (diff < 0) return 'text-red-600 font-semibold'
     if (diff < 3 * 86400_000) return 'text-orange-600 font-medium'
     return 'text-gray-600'

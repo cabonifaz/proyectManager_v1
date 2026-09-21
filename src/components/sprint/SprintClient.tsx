@@ -518,10 +518,13 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
                   let etaStatus = null;
                   let daysUntil = null;
                   if (item.eta && item.status !== 'completado') {
-                    const etaDate = new Date(item.eta);
-                    etaDate.setHours(0, 0, 0, 0);
+                    // item.eta llega como "YYYY-MM-DD..."; parsear con new Date(string) lo interpreta
+                    // en UTC y, en zonas horarias detrás de UTC, se corre un día hacia atrás. Se arma
+                    // la fecha local a partir de los mismos componentes que se muestran en pantalla.
+                    const [y, m, d] = item.eta.toString().slice(0, 10).split('-').map(Number);
+                    const etaDate = new Date(y, m - 1, d);
                     const diffTime = etaDate.getTime() - today.getTime();
-                    daysUntil = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    daysUntil = Math.round(diffTime / (1000 * 60 * 60 * 24));
                     if (daysUntil < 0) etaStatus = 'vencido';
                     else if (daysUntil <= 2) etaStatus = 'proximo';
                   }
