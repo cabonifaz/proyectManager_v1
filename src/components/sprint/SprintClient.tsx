@@ -21,13 +21,16 @@ interface TechVal {
   assigned_users?: { id: number; name: string; role: string }[] | null 
 }
 interface SprintItem {
-  id: number; code: string; module: string; description: string
+  // id es el id de la fila sprint_items (la asignacion al sprint); backlog_item_id es el
+  // id real del ticket en backlog_items. Son secuencias independientes: para editar el
+  // ticket, sus columnas tecnicas o su checklist siempre hay que usar backlog_item_id.
+  id: number; backlog_item_id: number; code: string; module: string; description: string
   progress: number; status: string; sprint_num: number | null
   eta: string | null; reg_date: string; comment: string
   tech_columns: TechVal[]
-  priority?: number;            
-  review_date?: string | null;  
-  obs_count?: number; 
+  priority?: number;
+  review_date?: string | null;
+  obs_count?: number;
 }
 
 const STATUS_OPTIONS = [
@@ -738,9 +741,10 @@ function ReorderSprintItemsModal({ tenant, sprint, items, onClose }: { tenant: s
     setError('')
     
     // Armamos el payload con los IDs y sus nuevas prioridades
+    // sp_sprint_items_reordenar espera el id de backlog_items, no el de sprint_items
     const payload = localItems.map((item, idx) => ({
-      id: item.id,
-      prioridad: prioritySlots[idx] 
+      id: item.backlog_item_id,
+      prioridad: prioritySlots[idx]
     }))
 
     try {
@@ -896,7 +900,7 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
     setSaving(true)
     setError('')
     try {
-      const res = await fetch(`/api/${tenant}/backlog/${item.id}`, {
+      const res = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -921,7 +925,7 @@ function SprintItemForm({ tenant, projectId, item, techCols, members, onClose, o
           const selectedUserIds = techVals[col.col_key] || []
           
           // 🚀 CORRECCIÓN: Ahora el Sprint guarda directamente en la ruta universal del Backlog
-          const r = await fetch(`/api/${tenant}/backlog/${item.id}/tech`, {
+          const r = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}/tech`, {
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ columnId: col.id, userIds: selectedUserIds }),
@@ -1260,15 +1264,18 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
 function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant: string, item: SprintItem, onClose: () => void, onUpdated: () => void }) {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [desc, setDesc] = useState('')
+  const [peso, setPeso] = useState<number | ''>('')
+  const [adding, setAdding] = useState(false)
 
   const fetchTasks = useCallback(async () => {
     try {
-      const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
+      const res = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}/tasks`)
       const json = await res.json()
       setTasks(json.data ?? [])
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [tenant, item.id])
+  }, [tenant, item.backlog_item_id])
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
 
@@ -1281,6 +1288,20 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
     } catch (e) { fetchTasks(); }
   }
 
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!desc.trim()) return
+    setAdding(true)
+    try {
+      const res = await fetch(`/api/${tenant}/backlog/${item.backlog_item_id}/tasks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descripcion: desc, peso: Number(peso) || 0 })
+      })
+      if (res.ok) { setDesc(''); setPeso(''); fetchTasks(); onUpdated() }
+    } catch (e) { console.error(e) }
+    finally { setAdding(false) }
+  }
+
   function fmtTime(iso: string) { return new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 
   return (
@@ -1290,8 +1311,17 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
           <div><h2 className="font-bold text-indigo-900 text-lg">Ejecución de Checklist</h2><p className="text-[10px] text-indigo-600 font-mono mt-0.5 font-bold uppercase tracking-widest">{item.code}</p></div>
           <button onClick={onClose} className="text-indigo-400 hover:text-indigo-700 text-2xl">&times;</button>
         </div>
+        <div className="px-6 py-4 bg-white border-b shrink-0">
+          <form onSubmit={handleAdd} className="flex gap-2">
+            <input required type="text" placeholder="Descripción de la nueva tarea..." value={desc} onChange={e => setDesc(e.target.value)} className="flex-1 border rounded px-3 py-2 text-sm outline-none focus:border-indigo-500" />
+            <input type="number" min="0" max="100" placeholder="Peso %" value={peso} onChange={e => setPeso(e.target.value === '' ? '' : Number(e.target.value))} className="w-20 border rounded px-2 py-2 text-sm outline-none focus:border-indigo-500" title="Peso opcional (0-100)" />
+            <button type="submit" disabled={adding} className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-indigo-700 disabled:opacity-50">
+              {adding ? '...' : '+ Añadir'}
+            </button>
+          </form>
+        </div>
         <div className="px-6 py-4 overflow-y-auto bg-gray-50 flex-1">
-          {loading ? <p className="text-center text-sm text-gray-400 py-10">Cargando checklist...</p> : tasks.length === 0 ? <p className="text-center text-sm text-gray-400 italic py-10">Este ticket no tiene tareas configuradas en el backlog.</p> : (
+          {loading ? <p className="text-center text-sm text-gray-400 py-10">Cargando checklist...</p> : tasks.length === 0 ? <p className="text-center text-sm text-gray-400 italic py-10">Este ticket no tiene tareas configuradas.</p> : (
             <div className="space-y-3">
               {tasks.map(t => (
                 <label key={t.id} className={`flex items-start gap-3 p-4 bg-white border rounded-lg shadow-sm cursor-pointer transition-colors ${t.completado === 1 ? 'border-green-300 bg-green-50/40' : 'hover:border-indigo-300 border-gray-200'}`}>
