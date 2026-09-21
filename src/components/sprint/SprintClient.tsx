@@ -142,7 +142,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [obsLoad, setObsLoad]               = useState<{name: string, count: number}[]>([])
 
   // 🚀 ESTADO ORDENAMIENTO
-  const [sort, setSort] = useState<SortState>({ key: null, dir: 'asc' })
+  const [sort, setSort] = useState<SortState>({ key: 'priority', dir: 'asc' })
   // 🚀 ESTADO MODAL DRAG AND DROP
   const [isReorderOpen, setIsReorderOpen] = useState(false)
 
@@ -558,7 +558,10 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   {item.status === 'completado' || Number(item.priority || 0) === 0 ? (
     <span className="text-gray-300 font-normal">—</span>
   ) : (
-    <span className={Number(item.priority) >= 8 ? 'text-red-600' : 'text-blue-600'}>
+    <span
+      className={Number(item.priority) >= 8 ? 'text-red-600' : 'text-blue-600'}
+      title={Number(item.priority) >= 8 ? 'Prioridad alta (8 o más)' : 'Prioridad normal'}
+    >
       P: {Number(item.priority)}
     </span>
   )}
