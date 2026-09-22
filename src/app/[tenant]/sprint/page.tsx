@@ -46,7 +46,7 @@ export default async function SprintPage({ params }: { params: { tenant: string 
 
   return (
     <div className="h-full flex flex-col">
-      <h1 className="text-2xl font-semibold mb-6 shrink-0">Sprints</h1>
+      <h1 className="text-base font-semibold mb-2 shrink-0">Sprints</h1>
       <div className="flex-1 min-h-0">
         <SprintClient
           projects={projects}

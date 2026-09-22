@@ -114,10 +114,12 @@ const [sprintFilter, setSprint]         = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [itemToDelete, setItemToDelete]           = useState<number | null>(null)
 
-  // Modo compacto: oculta la barra de filtros para maximizar el ancho de la tabla
-  const [compactFilters, setCompactFilters] = useState(false)
+  // Modo compacto: oculta la barra de filtros para maximizar el alto de la tabla.
+  // Por defecto arranca compacto (la tabla es lo importante); si el usuario lo
+  // expandio explicitamente antes, se respeta esa eleccion.
+  const [compactFilters, setCompactFilters] = useState(true)
   useEffect(() => {
-    if (localStorage.getItem('pm_backlog_compact') === '1') setCompactFilters(true)
+    if (localStorage.getItem('pm_backlog_compact') === '0') setCompactFilters(false)
   }, [])
   function toggleCompactFilters() {
     setCompactFilters(prev => {
@@ -313,7 +315,7 @@ const [sprintFilter, setSprint]         = useState('')
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       {/* Filtros */}
-      <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
+      <div className="bg-white rounded-lg shadow px-4 py-2 flex flex-wrap gap-3 items-center shrink-0">
         {!compactFilters && (
           <select
             className="border rounded px-3 py-1.5 text-sm"
@@ -411,7 +413,7 @@ const [sprintFilter, setSprint]         = useState('')
         </div>
       </div>
 
-      {targetSprintNum !== null && (
+      {targetSprintNum !== null && !compactFilters && (
         <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-4 items-center border-l-4 border-blue-500">
           <div className="border-r border-gray-100 pr-4">
             <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">

@@ -259,6 +259,22 @@ const [search, setSearch]             = useState('')
   const toggleTipoFilter = (val: string) => {
     setTipoFilters(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val])
   }
+
+  // Modo compacto: oculta los filtros de tipo/estado/busqueda para maximizar la tabla.
+  // Por defecto arranca compacto (la lista es lo importante); si el usuario lo
+  // expandio explicitamente antes, se respeta esa eleccion.
+  const [compactFilters, setCompactFilters] = useState(true)
+  useEffect(() => {
+    if (localStorage.getItem('pm_obs_compact') === '0') setCompactFilters(false)
+  }, [])
+  function toggleCompactFilters() {
+    setCompactFilters(prev => {
+      const next = !prev
+      localStorage.setItem('pm_obs_compact', next ? '1' : '0')
+      return next
+    })
+  }
+
   const [showForm, setShowForm]         = useState(false)
   const [editItem, setEditItem]         = useState<Observacion | null>(null)
   const [form, setForm]                 = useState<FormData>(EMPTY_FORM)
@@ -556,66 +572,82 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           ))}
         </select>
 
-        {/* 🚀 Filtros Múltiples para Tipos */}
-        <div className="flex gap-1.5 items-center border-r pr-3 border-gray-200">
-          <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Tipos:</span>
-          {TIPO_OPTIONS.map(t => (
-            <button
-              key={t.val}
-              onClick={() => toggleTipoFilter(t.val)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                tipoFilters.includes(t.val) 
-                  ? `${t.color} border-current shadow-sm scale-105` 
-                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          {tipoFilters.length > 0 && (
-            <button onClick={() => setTipoFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline ml-1">Todo</button>
-          )}
-        </div>
+        {!compactFilters && (
+          <>
+            {/* 🚀 Filtros Múltiples para Tipos */}
+            <div className="flex gap-1.5 items-center border-r pr-3 border-gray-200">
+              <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Tipos:</span>
+              {TIPO_OPTIONS.map(t => (
+                <button
+                  key={t.val}
+                  onClick={() => toggleTipoFilter(t.val)}
+                  title={t.label}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    tipoFilters.includes(t.val)
+                      ? `${t.color} border-current shadow-sm scale-105`
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+              {tipoFilters.length > 0 && (
+                <button onClick={() => setTipoFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline ml-1">Todo</button>
+              )}
+            </div>
 
-        {/* 🚀 Filtros Múltiples para Estados */}
-        <div className="flex gap-1.5 items-center">
-          <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Estados:</span>
-          {ESTADO_OPTIONS_LIST.map(s => (
-            <button
-              key={s.val}
-              onClick={() => toggleEstadoFilter(s.val)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                estadoFilters.includes(s.val) 
-                  ? `${s.color} border-current shadow-sm scale-105` 
-                  : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              {s.label}
-            </button>
-          ))}
-          {estadoFilters.length > 0 && (
-            <button onClick={() => setEstadoFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline ml-1">Todo</button>
-          )}
-        </div>
+            {/* 🚀 Filtros Múltiples para Estados */}
+            <div className="flex gap-1.5 items-center">
+              <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Estados:</span>
+              {ESTADO_OPTIONS_LIST.map(s => (
+                <button
+                  key={s.val}
+                  onClick={() => toggleEstadoFilter(s.val)}
+                  title={s.label}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                    estadoFilters.includes(s.val)
+                      ? `${s.color} border-current shadow-sm scale-105`
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+              {estadoFilters.length > 0 && (
+                <button onClick={() => setEstadoFilters([])} className="text-xs text-gray-400 hover:text-gray-600 underline ml-1">Todo</button>
+              )}
+            </div>
 
-        <input
-          type="text"
-          placeholder="Buscar..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
-        />
+            <input
+              type="text"
+              placeholder="Buscar..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="border rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
+            />
 
-        {/* Indicador de ordenamiento activo */}
-        {sort.key && (
-          <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded">
-            Orden: <strong>{SORT_LABELS[sort.key] ?? sort.key}</strong> {sort.dir === 'asc' ? '▲' : '▼'}
-            <button
-              onClick={() => setSort({ key: null, dir: 'asc' })}
-              className="ml-1 text-blue-400 hover:text-blue-700 font-bold"
-              title="Quitar ordenamiento"
-            >×</button>
-          </span>
+            {/* Indicador de ordenamiento activo */}
+            {sort.key && (
+              <span className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded">
+                Orden: <strong>{SORT_LABELS[sort.key] ?? sort.key}</strong> {sort.dir === 'asc' ? '▲' : '▼'}
+                <button
+                  onClick={() => setSort({ key: null, dir: 'asc' })}
+                  className="ml-1 text-blue-400 hover:text-blue-700 font-bold"
+                  title="Quitar ordenamiento"
+                >×</button>
+              </span>
+            )}
+
+            {/* 🚀 BOTÓN NUEVO: Abrir modal de reordenamiento */}
+            {projectId && (
+              <button
+                onClick={() => setIsReorderOpen(true)}
+                className="border border-gray-300 bg-white text-gray-700 px-3 py-2 rounded text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5"
+              >
+                ↕ Reordenar Prioridades
+              </button>
+            )}
+          </>
         )}
 
        {canCreate && (
@@ -627,15 +659,15 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
           </button>
         )}
 
-        {/* 🚀 BOTÓN NUEVO: Abrir modal de reordenamiento */}
-        {projectId && (
-          <button
-            onClick={() => setIsReorderOpen(true)}
-            className="border border-gray-300 bg-white text-gray-700 px-3 py-2 rounded text-sm font-medium hover:bg-gray-50 transition-colors flex items-center gap-1.5"
-          >
-            ↕ Reordenar Prioridades
-          </button>
-        )}
+        <button
+          onClick={toggleCompactFilters}
+          title={compactFilters ? 'Mostrar filtros' : 'Ocultar filtros para maximizar la tabla'}
+          className={`border px-2 py-2 rounded text-sm text-gray-500 hover:bg-gray-50 transition-colors ${canCreate ? '' : 'ml-auto'}`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points={compactFilters ? '6 9 12 15 18 9' : '18 15 12 9 6 15'} />
+          </svg>
+        </button>
       </div>
 
       {fetchError && (

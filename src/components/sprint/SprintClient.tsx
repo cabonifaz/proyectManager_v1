@@ -147,10 +147,12 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   // 🚀 ESTADO MODAL DRAG AND DROP
   const [isReorderOpen, setIsReorderOpen] = useState(false)
 
-  // Modo compacto: oculta el resumen del sprint y los filtros para maximizar la tabla
-  const [compactFilters, setCompactFilters] = useState(false)
+  // Modo compacto: oculta el resumen del sprint y los filtros para maximizar la tabla.
+  // Por defecto arranca compacto (la lista de tickets es lo importante); si el
+  // usuario lo expandio explicitamente antes, se respeta esa eleccion.
+  const [compactFilters, setCompactFilters] = useState(true)
   useEffect(() => {
-    if (localStorage.getItem('pm_sprint_compact') === '1') setCompactFilters(true)
+    if (localStorage.getItem('pm_sprint_compact') === '0') setCompactFilters(false)
   }, [])
   function toggleCompactFilters() {
     setCompactFilters(prev => {
@@ -331,7 +333,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
 
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
-      <div className="bg-white rounded-lg shadow px-4 py-3 flex flex-wrap gap-3 items-center">
+      <div className="bg-white rounded-lg shadow px-4 py-2 flex flex-wrap gap-3 items-center shrink-0">
         <select
           className="border rounded px-3 py-1.5 text-sm"
           value={projectId ?? ''}

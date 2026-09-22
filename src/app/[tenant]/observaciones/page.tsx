@@ -32,7 +32,7 @@ export default async function ObservacionesPage({
 
   return (
     <div className="h-full flex flex-col">
-      <h1 className="text-2xl font-semibold mb-6 shrink-0">Observaciones</h1>
+      <h1 className="text-base font-semibold mb-2 shrink-0">Observaciones</h1>
       <div className="flex-1 min-h-0">
         <ObservacionesClient
           projects={projectData}

@@ -16,13 +16,13 @@ export function Pagination({ page, totalItems, pageSize, onPageChange, onPageSiz
   const pageNumbers = getPageNumbers(page, totalPages)
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-100 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-1.5 bg-white border-t border-gray-100 text-sm shrink-0">
       <div className="flex items-center gap-2 text-xs text-gray-500">
         <span>Mostrando {from}–{to} de {totalItems}</span>
         <select
           value={pageSize}
           onChange={e => onPageSizeChange(Number(e.target.value))}
-          className="border rounded px-2 py-1 text-xs outline-none"
+          className="border rounded px-2 py-0.5 text-xs outline-none"
         >
           {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n} / página</option>)}
         </select>
@@ -32,7 +32,7 @@ export function Pagination({ page, totalItems, pageSize, onPageChange, onPageSiz
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="px-2.5 py-1 rounded border text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-2.5 py-0.5 rounded border text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           ‹ Anterior
         </button>
@@ -43,7 +43,7 @@ export function Pagination({ page, totalItems, pageSize, onPageChange, onPageSiz
           <button
             key={n}
             onClick={() => onPageChange(n as number)}
-            className={`px-2.5 py-1 rounded border text-xs transition-colors ${
+            className={`px-2.5 py-0.5 rounded border text-xs transition-colors ${
               n === page ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -54,7 +54,7 @@ export function Pagination({ page, totalItems, pageSize, onPageChange, onPageSiz
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="px-2.5 py-1 rounded border text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-2.5 py-0.5 rounded border text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Siguiente ›
         </button>
