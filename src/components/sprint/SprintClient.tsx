@@ -166,6 +166,13 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
+  // Descripcion: se muestra en una sola linea; al hacer click se expande momentaneamente
+  // esa fila (y se vuelve a encoger al hacer click de nuevo o al expandir otra).
+  const [expandedDescId, setExpandedDescId] = useState<number | null>(null)
+  function toggleDesc(id: number) {
+    setExpandedDescId(prev => prev === id ? null : id)
+  }
+
   const currentProject = allowedProjects.find(p => p.id === projectId)
 
   // Rol efectivo para el proyecto seleccionado: el global, elevado si tiene un rol asignado en ESE proyecto
@@ -592,7 +599,14 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
   )}
 </td>
                       <td className="px-3 py-2 min-w-[300px]">
-  <span className="line-clamp-2 block font-medium text-gray-800">{item.description}</span>
+  <button
+    type="button"
+    onClick={() => toggleDesc(item.id)}
+    title={expandedDescId === item.id ? 'Click para contraer' : item.description}
+    className={`text-left font-medium text-gray-800 hover:text-blue-600 transition-colors ${expandedDescId === item.id ? 'block' : 'line-clamp-1'}`}
+  >
+    {item.description}
+  </button>
 </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1 w-24">

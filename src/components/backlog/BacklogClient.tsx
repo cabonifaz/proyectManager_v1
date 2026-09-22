@@ -163,6 +163,13 @@ const [sprintFilter, setSprint]         = useState('')
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
   useEffect(() => { setPage(1) }, [items, sort, pageSize])
+
+  // Descripcion: se muestra en una sola linea; al hacer click se expande momentaneamente
+  // esa fila (y se vuelve a encoger al hacer click de nuevo o al expandir otra).
+  const [expandedDescId, setExpandedDescId] = useState<number | null>(null)
+  function toggleDesc(id: number) {
+    setExpandedDescId(prev => prev === id ? null : id)
+  }
   const pageItems = sortedItems.slice((page - 1) * pageSize, page * pageSize)
 
   const fetchColumns = useCallback(async (): Promise<TechCol[]> => {
@@ -489,7 +496,14 @@ const [sprintFilter, setSprint]         = useState('')
                 </td>
                 <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{item.module || '—'}</td>
                 <td className="px-3 py-2 max-w-xs">
-                  <span className="line-clamp-2 block">{item.description}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggleDesc(item.id)}
+                    title={expandedDescId === item.id ? 'Click para contraer' : item.description}
+                    className={`text-left hover:text-blue-600 transition-colors ${expandedDescId === item.id ? 'block' : 'line-clamp-1'}`}
+                  >
+                    {item.description}
+                  </button>
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   <div className="flex items-center gap-1 w-24">

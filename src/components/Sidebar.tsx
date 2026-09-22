@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
@@ -33,28 +33,50 @@ function Icon({ name }: { name: string }) {
   )
 }
 
-const COLLAPSE_KEY = 'pm_sidebar_collapsed'
+const AUTO_COLLAPSE_MS = 4000
 
 export function Sidebar({ tenant, tenantName, logoUrl, role, userName }: {
   tenant: string; tenantName: string; logoUrl?: string | null; role: Role; userName: string
 }) {
   const pathname = usePathname()
-  const [collapsed, setCollapsed] = useState(false)
+  // Arranca siempre colapsado para darle mas ancho a las tablas; al ampliarlo (boton o
+  // hover) se vuelve a encoger solo despues de unos segundos sin interaccion.
+  const [collapsed, setCollapsed] = useState(true)
+  const autoCollapseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
-    if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true)
-  }, [])
+  function clearAutoCollapseTimer() {
+    if (autoCollapseTimer.current) {
+      clearTimeout(autoCollapseTimer.current)
+      autoCollapseTimer.current = null
+    }
+  }
+
+  function scheduleAutoCollapse() {
+    clearAutoCollapseTimer()
+    autoCollapseTimer.current = setTimeout(() => setCollapsed(true), AUTO_COLLAPSE_MS)
+  }
+
+  useEffect(() => () => clearAutoCollapseTimer(), [])
 
   function toggleCollapsed() {
     setCollapsed(prev => {
       const next = !prev
-      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
+      if (next) clearAutoCollapseTimer()
+      else scheduleAutoCollapse()
       return next
     })
   }
 
+  // Mientras el mouse esta sobre el menu expandido no se encoge; al salir, retoma la cuenta.
+  function handleMouseEnter() { if (!collapsed) clearAutoCollapseTimer() }
+  function handleMouseLeave() { if (!collapsed) scheduleAutoCollapse() }
+
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-56'} bg-gray-900 text-gray-100 flex flex-col shrink-0 transition-all duration-150`}>
+    <aside
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className={`${collapsed ? 'w-16' : 'w-56'} bg-gray-900 text-gray-100 flex flex-col shrink-0 transition-all duration-150`}
+    >
       <div className="px-4 py-5 border-b border-gray-700 flex items-center justify-between gap-2">
         {collapsed ? (
           logoUrl && <img src={logoUrl} alt={tenantName} className="w-8 h-8 rounded object-contain mx-auto" />
