@@ -685,7 +685,7 @@ const url    = editItem ? `/api/${tenant}/observaciones/${editItem.id}` : `/api/
         <div className="rounded-lg border border-gray-200 bg-white overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="overflow-auto flex-1 min-h-0">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
              <tr>
                 {/* ── Encabezados clicables ── */}
                 <th className="px-3 py-3 text-left font-medium text-gray-600 whitespace-nowrap">

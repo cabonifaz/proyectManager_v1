@@ -482,9 +482,9 @@ export function DashboardClient({ projects, tenant, role: _role }: {
           {/* ── Tabla detallada ── */}
           <div className="bg-white rounded-lg shadow p-5 text-gray-800">
             <h2 className="font-semibold text-gray-700 mb-4">Detalle por proyecto</h2>
-            <div className="overflow-x-auto">
+            <div className="overflow-auto max-h-[60vh]">
               <table className="min-w-full text-sm">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-gray-50 border-b sticky top-0 z-10">
                   <tr className="text-[10px] font-black uppercase text-gray-400 tracking-wider">
                     <th className="px-3 py-3 text-left whitespace-nowrap">Proyecto</th>
                     <th className="px-3 py-3 text-center whitespace-nowrap">Total</th>
@@ -785,9 +785,9 @@ function DevStatsPanel({ devStats }: { devStats: DevStat[] }) {
         <span className="text-xs text-gray-400">{devStats.length} desarrolladores</span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-auto max-h-[60vh]">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b sticky top-0 z-10">
             <tr className="text-[10px] font-black uppercase text-gray-400 tracking-wider">
               <th className="px-3 py-3 text-left">Desarrollador</th>
               <th className="px-3 py-3 text-center">Carga</th>

@@ -456,7 +456,7 @@ const [sprintFilter, setSprint]         = useState('')
       <div className="bg-white rounded-lg shadow overflow-hidden flex-1 min-h-0 flex flex-col">
         <div className="overflow-auto flex-1 min-h-0">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b sticky top-0 z-10">
             <tr>
               <th className={thClass<SortKey>('code', sort)} onClick={() => handleSort('code')}>Código <SortIcon col="code" sort={sort} /></th>
               <th className={thClass<SortKey>('module', sort)} onClick={() => handleSort('module')}>Módulo <SortIcon col="module" sort={sort} /></th>

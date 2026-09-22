@@ -177,8 +177,9 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
 
       {/* Tabla */}
       <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="max-h-[calc(100vh-260px)] overflow-auto rounded-lg">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50 border-b">
+          <thead className="bg-gray-50 border-b sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Nombre</th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">Email</th>
@@ -287,6 +288,7 @@ export function UsersClient({ projects, tenant, role, currentUserId }: {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showForm && (
