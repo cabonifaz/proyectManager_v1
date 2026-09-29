@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getContextFromHeaders, requireProjectPermission, handleApiError } from '@/lib/session'
+import { getContextFromHeaders, requireProjectPermission, isProjectMember, handleApiError } from '@/lib/session'
 import { callProcedureOut, query } from '@/lib/db'
 
 export async function PATCH(req: NextRequest, { params }: { params: { tenant: string; taskId: string } }) {
@@ -14,11 +14,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       [taskId],
     )
     if (!taskProjRows || taskProjRows.length === 0) return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
-
-    const permError = await requireProjectPermission(ctx, 'backlog:update', taskProjRows[0].project_id)
-    if (permError) return permError
+    const projectId = taskProjRows[0].project_id
 
     const body = await req.json()
+
+    // ESCENARIO 0: Check del desarrollador (segundo checkbox) — cualquier miembro del
+    // proyecto puede marcarlo (los desarrolladores no tienen 'backlog:update'), y a
+    // proposito NO recalcula el avance del ticket: eso solo lo hace el check del gestor.
+    if (body.completadoDev !== undefined) {
+      if (!(await isProjectMember(ctx, projectId))) {
+        return NextResponse.json({ error: 'No tienes acceso a este proyecto' }, { status: 403 })
+      }
+      const completadoDev = Number(body.completadoDev) ? 1 : 0
+      await query(
+        `UPDATE backlog_item_tasks
+         SET completado_dev = ?, completado_dev_at = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [completadoDev, completadoDev ? new Date() : null, taskId]
+      )
+      return NextResponse.json({ message: 'Check del desarrollador actualizado' })
+    }
+
+    const permError = await requireProjectPermission(ctx, 'backlog:update', projectId)
+    if (permError) return permError
 
     // ESCENARIO 1: Toggle de estado (Check / Uncheck)
     if (body.completado !== undefined) {

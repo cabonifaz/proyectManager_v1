@@ -712,7 +712,7 @@ export function SprintClient({ projects, members, tenant, role, userId }: {
       )}
 
       {checklistExecOpen && (
-        <ChecklistExecutionModal tenant={tenant} item={checklistExecOpen} onClose={() => setChecklistExecOpen(null)} onUpdated={() => fetchItems(activeSprint)} />
+        <ChecklistExecutionModal tenant={tenant} item={checklistExecOpen} canManagerCheck={canEditItem} onClose={() => setChecklistExecOpen(null)} onUpdated={() => fetchItems(activeSprint)} />
       )}
 
       {isReorderOpen && activeSprint && (
@@ -1296,7 +1296,7 @@ function SprintManager({ tenant, projectId, sprints, onClose, onSaved }: { tenan
 }
 
 // ── Checklist Execution ─────────────────────────────────────────────────────
-function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant: string, item: SprintItem, onClose: () => void, onUpdated: () => void }) {
+function ChecklistExecutionModal({ tenant, item, canManagerCheck, onClose, onUpdated }: { tenant: string, item: SprintItem, canManagerCheck: boolean, onClose: () => void, onUpdated: () => void }) {
   const [tasks, setTasks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [desc, setDesc] = useState('')
@@ -1344,12 +1344,24 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
 
   useEffect(() => { fetchTasks() }, [fetchTasks])
 
+  // Check del gestor/lider tecnico: verifica el trabajo y es el que recalcula el
+  // avance del ticket (comportamiento existente, sin cambios).
   async function handleToggle(taskId: number, currentStatus: number) {
     const newStatus = currentStatus === 1 ? 0 : 1;
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completado: newStatus, completado_at: newStatus === 1 ? new Date().toISOString() : null } : t));
     try {
       await fetch(`/api/${tenant}/backlog/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completado: newStatus }) })
       onUpdated();
+    } catch (e) { fetchTasks(); }
+  }
+
+  // Check del desarrollador: su propio marcador de "lo hice", no afecta el avance
+  // del ticket (solo el check del gestor, arriba, recalcula el avance).
+  async function handleToggleDev(taskId: number, currentStatus: number) {
+    const newStatus = currentStatus === 1 ? 0 : 1;
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completado_dev: newStatus, completado_dev_at: newStatus === 1 ? new Date().toISOString() : null } : t));
+    try {
+      await fetch(`/api/${tenant}/backlog/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completadoDev: newStatus }) })
     } catch (e) { fetchTasks(); }
   }
 
@@ -1397,20 +1409,36 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}
                   className={`flex items-start gap-3 p-4 bg-white border rounded-lg shadow-sm transition-colors ${
-                    draggedIndex === idx ? 'border-indigo-400 shadow-md' : t.completado === 1 ? 'border-green-300 bg-green-50/40' : 'hover:border-indigo-300 border-gray-200'
+                    draggedIndex === idx
+                      ? 'border-indigo-400 shadow-md'
+                      : t.completado === 1
+                        ? 'border-green-300 bg-green-50/40'
+                        : t.completado_dev === 1
+                          ? 'border-sky-300 bg-sky-50/40'
+                          : 'hover:border-indigo-300 border-gray-200'
                   }`}
                 >
                   <span className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing pt-0.5 select-none" title="Arrastrar para reordenar">☰</span>
-                  <label className="flex items-start gap-3 flex-1 cursor-pointer">
-                    <div className="pt-0.5"><input type="checkbox" checked={t.completado === 1} onChange={() => handleToggle(t.id, t.completado)} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" /></div>
-                    <div className="flex-1">
-                      <p className={`text-sm font-medium transition-all ${t.completado === 1 ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{t.descripcion}</p>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        {t.peso > 0 ? <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Peso: {t.peso}%</span> : <span className="text-[9px] font-bold text-gray-300 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Sin peso</span>}
-                        {t.completado === 1 && t.completado_at && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">✓ Completado el {fmtTime(t.completado_at)}</span>}
-                      </div>
+
+                  <div className="flex flex-col items-center gap-2 pt-0.5">
+                    <label className="flex flex-col items-center gap-0.5 cursor-pointer" title="Check del desarrollador">
+                      <input type="checkbox" checked={t.completado_dev === 1} onChange={() => handleToggleDev(t.id, t.completado_dev)} className="w-4 h-4 text-sky-600 rounded border-gray-300 focus:ring-sky-500 cursor-pointer" />
+                      <span className="text-[8px] font-bold text-sky-500 uppercase tracking-wider">Dev</span>
+                    </label>
+                    <label className={`flex flex-col items-center gap-0.5 ${canManagerCheck ? 'cursor-pointer' : 'cursor-not-allowed'}`} title={canManagerCheck ? 'Check del gestor / líder técnico' : 'Solo el gestor o líder técnico puede marcar este check'}>
+                      <input type="checkbox" disabled={!canManagerCheck} checked={t.completado === 1} onChange={() => handleToggle(t.id, t.completado)} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40" />
+                      <span className="text-[8px] font-bold text-indigo-500 uppercase tracking-wider disabled:opacity-40">Gestor</span>
+                    </label>
+                  </div>
+
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium transition-all ${t.completado === 1 ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{t.descripcion}</p>
+                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                      {t.peso > 0 ? <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Peso: {t.peso}%</span> : <span className="text-[9px] font-bold text-gray-300 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Sin peso</span>}
+                      {t.completado_dev === 1 && t.completado_dev_at && <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wide">Dev ✓ {fmtTime(t.completado_dev_at)}</span>}
+                      {t.completado === 1 && t.completado_at && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">Gestor ✓ {fmtTime(t.completado_at)}</span>}
                     </div>
-                  </label>
+                  </div>
                 </div>
               ))}
             </div>

@@ -10,7 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
    // 🚀 CORRECCIÓN: Agregado el filtro AND deleted_at IS NULL
    const rows: any = await query(
-      `SELECT id, backlog_item_id, descripcion, peso, orden, completado, completado_at, created_by, created_at
+      `SELECT id, backlog_item_id, descripcion, peso, orden, completado, completado_at, completado_dev, completado_dev_at, created_by, created_at
        FROM backlog_item_tasks
        WHERE backlog_item_id = ? AND deleted_at IS NULL
        ORDER BY orden ASC, created_at ASC`,
