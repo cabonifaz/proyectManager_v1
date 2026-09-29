@@ -129,21 +129,44 @@ export async function PATCH(req: NextRequest, { params }: { params: { tenant: st
       if (exist && exist.length > 0) {
         // 🚀 CORRECCIÓN VITAL: Reemplazamos COALESCE por IF para forzar a la BD a aceptar NULL y 0 explícitamente.
         await query(
-          `UPDATE sprint_items 
+          `UPDATE sprint_items
            SET priority = IF(? = 1, ?, priority),
                status = IF(? = 1, ?, status),
-               review_date = IF(? = 1, ?, review_date), 
-               updated_by = ?, 
-               updated_at = NOW() 
+               review_date = IF(? = 1, ?, review_date),
+               updated_by = ?,
+               updated_at = NOW()
            WHERE backlog_item_id = ? AND deleted_at IS NULL`,
           [
             body.priority !== undefined ? 1 : 0, body.priority ?? 0,
             body.status !== undefined ? 1 : 0, body.status ?? null,
-            body.reviewDate !== undefined ? 1 : 0, body.reviewDate || null, 
-            ctx.userId, 
+            body.reviewDate !== undefined ? 1 : 0, body.reviewDate || null,
+            ctx.userId,
             id
           ]
         )
+
+        // Mantiene sprint_num/sprint_id de sprint_items sincronizado con backlog_items
+        // cuando el ticket cambia de sprint (o sale de todos). Si queda desincronizado,
+        // sp_backlog_list "pierde" la prioridad real del ticket (cruza por sprint_num).
+        if (sprintNumExplicit === 1) {
+          if (body.sprintNum === null) {
+            await query(
+              `UPDATE sprint_items SET sprint_num = NULL, updated_by = ?, updated_at = NOW() WHERE backlog_item_id = ? AND deleted_at IS NULL`,
+              [ctx.userId, id]
+            )
+          } else {
+            const targetSprint: any = await query(
+              `SELECT id FROM sprints WHERE number = ? AND project_id = ? AND deleted_at IS NULL LIMIT 1`,
+              [body.sprintNum, projectId]
+            )
+            if (targetSprint && targetSprint.length > 0) {
+              await query(
+                `UPDATE sprint_items SET sprint_id = ?, sprint_num = ?, updated_by = ?, updated_at = NOW() WHERE backlog_item_id = ? AND deleted_at IS NULL`,
+                [targetSprint[0].id, body.sprintNum, ctx.userId, id]
+              )
+            }
+          }
+        }
       } else if (body.sprintNum !== null && body.sprintNum !== undefined) {
         // Lo insertamos copiando los datos base
         const backlogInfo: any = await query(
