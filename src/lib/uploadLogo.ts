@@ -28,13 +28,23 @@ export async function saveLogo(folder: string, slug: string, dataUrl: string): P
   const filename = `${slug}-${Date.now()}.${ext}`
   await fs.writeFile(path.join(dir, filename), buffer)
 
-  return { url: `/uploads/${folder}/${filename}` }
+  // Servido por /api/uploads/[...path] (lee el disco en cada pedido), NO como
+  // estático de Next: next start no sirve archivos agregados a public/ después
+  // del build, aunque el volumen persistente sí los tenga guardados.
+  return { url: `/api/uploads/${folder}/${filename}` }
 }
 
 export async function deleteOldLogo(folder: string, oldUrl: string | null | undefined) {
-  if (!oldUrl || !oldUrl.startsWith(`/uploads/${folder}/`)) return
+  if (!oldUrl) return
+  const prefix = oldUrl.startsWith(`/api/uploads/${folder}/`)
+    ? `/api/uploads/${folder}/`
+    : oldUrl.startsWith(`/uploads/${folder}/`)
+      ? `/uploads/${folder}/`
+      : null
+  if (!prefix) return
   try {
-    await fs.unlink(path.join(process.cwd(), 'public', oldUrl))
+    const filename = oldUrl.slice(prefix.length)
+    await fs.unlink(path.join(process.cwd(), 'public', 'uploads', folder, filename))
   } catch {
     // best-effort: si no existe o falla el borrado, seguimos sin romper la actualización
   }
