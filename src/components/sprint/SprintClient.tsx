@@ -1303,6 +1303,36 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
   const [peso, setPeso] = useState<number | ''>('')
   const [adding, setAdding] = useState(false)
 
+  // Drag & drop para reordenar el checklist
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+
+  function handleDragStart(e: React.DragEvent, index: number) {
+    e.dataTransfer.effectAllowed = 'move'
+    setTimeout(() => setDraggedIndex(index), 0)
+  }
+  function handleDragEnter(e: React.DragEvent, targetIndex: number) {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === targetIndex) return
+    setTasks(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(draggedIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+    setDraggedIndex(targetIndex)
+  }
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault()
+  async function handleDragEnd() {
+    setDraggedIndex(null)
+    try {
+      await fetch(`/api/${tenant}/backlog/${item.id}/tasks/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: tasks.map(t => t.id) }),
+      })
+    } catch (e) { console.error(e) }
+  }
+
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
@@ -1358,17 +1388,30 @@ function ChecklistExecutionModal({ tenant, item, onClose, onUpdated }: { tenant:
         <div className="px-6 py-4 overflow-y-auto bg-gray-50 flex-1">
           {loading ? <p className="text-center text-sm text-gray-400 py-10">Cargando checklist...</p> : tasks.length === 0 ? <p className="text-center text-sm text-gray-400 italic py-10">Este ticket no tiene tareas configuradas.</p> : (
             <div className="space-y-3">
-              {tasks.map(t => (
-                <label key={t.id} className={`flex items-start gap-3 p-4 bg-white border rounded-lg shadow-sm cursor-pointer transition-colors ${t.completado === 1 ? 'border-green-300 bg-green-50/40' : 'hover:border-indigo-300 border-gray-200'}`}>
-                  <div className="pt-0.5"><input type="checkbox" checked={t.completado === 1} onChange={() => handleToggle(t.id, t.completado)} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" /></div>
-                  <div className="flex-1">
-                    <p className={`text-sm font-medium transition-all ${t.completado === 1 ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{t.descripcion}</p>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      {t.peso > 0 ? <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Peso: {t.peso}%</span> : <span className="text-[9px] font-bold text-gray-300 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Sin peso</span>}
-                      {t.completado === 1 && t.completado_at && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">✓ Completado el {fmtTime(t.completado_at)}</span>}
+              {tasks.map((t, idx) => (
+                <div
+                  key={t.id}
+                  draggable
+                  onDragStart={e => handleDragStart(e, idx)}
+                  onDragEnter={e => handleDragEnter(e, idx)}
+                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-start gap-3 p-4 bg-white border rounded-lg shadow-sm transition-colors ${
+                    draggedIndex === idx ? 'border-indigo-400 shadow-md' : t.completado === 1 ? 'border-green-300 bg-green-50/40' : 'hover:border-indigo-300 border-gray-200'
+                  }`}
+                >
+                  <span className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing pt-0.5 select-none" title="Arrastrar para reordenar">☰</span>
+                  <label className="flex items-start gap-3 flex-1 cursor-pointer">
+                    <div className="pt-0.5"><input type="checkbox" checked={t.completado === 1} onChange={() => handleToggle(t.id, t.completado)} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer" /></div>
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium transition-all ${t.completado === 1 ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{t.descripcion}</p>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        {t.peso > 0 ? <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Peso: {t.peso}%</span> : <span className="text-[9px] font-bold text-gray-300 bg-gray-50 border border-gray-100 px-1.5 py-0.5 rounded uppercase tracking-wider">Sin peso</span>}
+                        {t.completado === 1 && t.completado_at && <span className="text-[10px] font-bold text-green-600 uppercase tracking-wide">✓ Completado el {fmtTime(t.completado_at)}</span>}
+                      </div>
                     </div>
-                  </div>
-                </label>
+                  </label>
+                </div>
               ))}
             </div>
           )}

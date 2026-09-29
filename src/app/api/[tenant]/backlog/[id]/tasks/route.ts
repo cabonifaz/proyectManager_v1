@@ -10,10 +10,10 @@ export async function GET(req: NextRequest, { params }: { params: { tenant: stri
 
    // 🚀 CORRECCIÓN: Agregado el filtro AND deleted_at IS NULL
    const rows: any = await query(
-      `SELECT id, backlog_item_id, descripcion, peso, completado, completado_at, created_by, created_at 
-       FROM backlog_item_tasks 
+      `SELECT id, backlog_item_id, descripcion, peso, orden, completado, completado_at, created_by, created_at
+       FROM backlog_item_tasks
        WHERE backlog_item_id = ? AND deleted_at IS NULL
-       ORDER BY created_at ASC`,
+       ORDER BY orden ASC, created_at ASC`,
       [Number(params.id)]
     )
 
@@ -52,6 +52,17 @@ export async function POST(req: NextRequest, { params }: { params: { tenant: str
     if (result.p_error) {
       return NextResponse.json({ error: result.p_error }, { status: 400 })
     }
+
+    // Nueva tarea siempre al final del checklist
+    await query(
+      `UPDATE backlog_item_tasks SET orden = (
+         SELECT next_orden FROM (
+           SELECT COALESCE(MAX(orden), 0) + 1 AS next_orden FROM backlog_item_tasks
+           WHERE backlog_item_id = ? AND deleted_at IS NULL AND id != ?
+         ) t
+       ) WHERE id = ?`,
+      [Number(params.id), result.p_new_id, result.p_new_id]
+    )
 
     return NextResponse.json({ id: result.p_new_id, message: 'Tarea creada con éxito' })
   } catch (err) {

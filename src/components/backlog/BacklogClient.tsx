@@ -1180,6 +1180,36 @@ function ChecklistManagerModal({ tenant, item, onClose }: { tenant: string, item
   const [editDesc, setEditDesc] = useState('')
   const [editPeso, setEditPeso] = useState<number | ''>('')
 
+  // Drag & drop para reordenar el checklist
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+
+  function handleDragStart(e: React.DragEvent, index: number) {
+    e.dataTransfer.effectAllowed = 'move'
+    setTimeout(() => setDraggedIndex(index), 0)
+  }
+  function handleDragEnter(e: React.DragEvent, targetIndex: number) {
+    e.preventDefault()
+    if (draggedIndex === null || draggedIndex === targetIndex) return
+    setTasks(prev => {
+      const next = [...prev]
+      const [moved] = next.splice(draggedIndex, 1)
+      next.splice(targetIndex, 0, moved)
+      return next
+    })
+    setDraggedIndex(targetIndex)
+  }
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault()
+  async function handleDragEnd() {
+    setDraggedIndex(null)
+    try {
+      await fetch(`/api/${tenant}/backlog/${item.id}/tasks/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: tasks.map(t => t.id) }),
+      })
+    } catch (e) { console.error(e) }
+  }
+
   const fetchTasks = useCallback(async () => {
     try {
       const res = await fetch(`/api/${tenant}/backlog/${item.id}/tasks`)
@@ -1265,9 +1295,20 @@ function ChecklistManagerModal({ tenant, item, onClose }: { tenant: string, item
           </p>
           {loading ? <p className="text-center text-sm text-gray-400 py-6">Cargando tareas...</p> : tasks.length === 0 ? <p className="text-center text-sm text-gray-400 italic py-6">No hay tareas registradas para este ticket.</p> : (
             <div className="space-y-2">
-              {tasks.map(t => (
-                <div key={t.id} className="flex items-center justify-between bg-white border border-gray-100 p-3 rounded-lg shadow-sm hover:border-blue-200 transition-colors">
-                  
+              {tasks.map((t, idx) => (
+                <div
+                  key={t.id}
+                  draggable={editingTaskId !== t.id}
+                  onDragStart={e => handleDragStart(e, idx)}
+                  onDragEnter={e => handleDragEnter(e, idx)}
+                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                  className={`flex items-center justify-between bg-white border p-3 rounded-lg shadow-sm transition-colors ${
+                    draggedIndex === idx ? 'border-blue-400 shadow-md' : 'border-gray-100 hover:border-blue-200'
+                  }`}
+                >
+                  <span className="text-gray-300 hover:text-gray-500 cursor-grab active:cursor-grabbing pr-2 select-none" title="Arrastrar para reordenar">☰</span>
+
                   {/* 🚀 LÓGICA CONDICIONAL: MODO EDICIÓN VS MODO VISTA */}
                   {editingTaskId === t.id ? (
                     <div className="flex-1 flex items-center gap-2 pr-2">
