@@ -1083,6 +1083,25 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
   const [form, setForm] = useState({ name: '', colType: 'both' })
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+
+  async function handleDeleteColumn(col: TechCol) {
+    if (!confirm(`¿Eliminar la columna "${col.name}"? Se deja de ver en Backlog, Sprint y Observaciones. Las asignaciones ya guardadas en esa columna no se pierden, pero dejan de mostrarse.`)) return
+    setDeletingId(col.id)
+    try {
+      const res = await fetch(`/api/${tenant}/projects/${projectId}/columns/${col.id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setError(json.error ?? 'No se pudo eliminar la columna')
+        return
+      }
+      onSaved()
+    } catch (e) {
+      setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -1127,9 +1146,20 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
               {columns.map(c => (
                 <div key={c.col_key} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
                   <span className="font-medium text-gray-700">{c.name}</span>
-                  <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 uppercase rounded">
-                    {c.col_type === 'both' ? 'Backlog + Sprint' : c.col_type}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 uppercase rounded">
+                      {c.col_type === 'both' ? 'Backlog + Sprint' : c.col_type}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteColumn(c)}
+                      disabled={deletingId === c.id}
+                      title="Eliminar columna"
+                      className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors disabled:opacity-40"
+                    >
+                      {deletingId === c.id ? '…' : '×'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
