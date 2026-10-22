@@ -1085,6 +1085,45 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
   const [error,  setError]  = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
+  // Edición en línea del nombre/visibilidad de una columna existente
+  const [editingCol, setEditingCol] = useState<TechCol | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editColType, setEditColType] = useState('both')
+  const [savingEdit, setSavingEdit] = useState(false)
+
+  function startEditColumn(col: TechCol) {
+    setEditingCol(col)
+    setEditName(col.name)
+    setEditColType(col.col_type)
+  }
+
+  async function handleSaveColumn(col: TechCol) {
+    if (!editName.trim() || savingEdit) return
+    setSavingEdit(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/${tenant}/projects/${projectId}/columns`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          columnId:  col.id,
+          name:      editName.trim(),
+          colKey:    col.col_key,
+          colType:   editColType,
+          sortOrder: col.sort_order,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setError(`Error ${res.status}: ${json.error ?? 'Error al guardar'}`); return }
+      setEditingCol(null)
+      onSaved()
+    } catch (e) {
+      setError(`Error de red: ${e instanceof Error ? e.message : 'Sin conexión'}`)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   async function handleDeleteColumn(col: TechCol) {
     if (!confirm(`¿Eliminar la columna "${col.name}"? Se deja de ver en Backlog, Sprint y Observaciones. Las asignaciones ya guardadas en esa columna no se pierden, pero dejan de mostrarse.`)) return
     setDeletingId(col.id)
@@ -1144,22 +1183,58 @@ function ColumnConfig({ tenant, projectId, columns, onClose, onSaved }: {
           ) : (
             <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
               {columns.map(c => (
-                <div key={c.col_key} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
-                  <span className="font-medium text-gray-700">{c.name}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 uppercase rounded">
-                      {c.col_type === 'both' ? 'Backlog + Sprint' : c.col_type}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteColumn(c)}
-                      disabled={deletingId === c.id}
-                      title="Eliminar columna"
-                      className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors disabled:opacity-40"
-                    >
-                      {deletingId === c.id ? '…' : '×'}
-                    </button>
-                  </div>
+                <div key={c.col_key} className="px-3 py-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
+                  {editingCol?.id === c.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        autoFocus
+                        className="flex-1 border rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                      />
+                      <select
+                        className="border rounded px-2 py-1 text-xs outline-none bg-white"
+                        value={editColType}
+                        onChange={e => setEditColType(e.target.value)}
+                      >
+                        <option value="both">Backlog + Sprint</option>
+                        <option value="backlog">Backlog</option>
+                        <option value="sprint">Sprint</option>
+                      </select>
+                      <button type="button" onClick={() => handleSaveColumn(c)} disabled={savingEdit} className="text-green-600 hover:text-green-800 font-bold text-xs uppercase px-1">
+                        {savingEdit ? '...' : '✓'}
+                      </button>
+                      <button type="button" onClick={() => setEditingCol(null)} disabled={savingEdit} className="text-gray-400 hover:text-gray-600 font-bold text-xs uppercase px-1">
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-gray-700">{c.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 uppercase rounded">
+                          {c.col_type === 'both' ? 'Backlog + Sprint' : c.col_type}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => startEditColumn(c)}
+                          title="Editar columna"
+                          className="text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-full w-6 h-6 flex items-center justify-center transition-colors"
+                        >
+                          ✎
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteColumn(c)}
+                          disabled={deletingId === c.id}
+                          title="Eliminar columna"
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center font-bold transition-colors disabled:opacity-40"
+                        >
+                          {deletingId === c.id ? '…' : '×'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
